@@ -364,6 +364,30 @@ const stripDerived = (source: Record<string, unknown>): Record<string, unknown> 
 
 let eagerMigrationAttempted = false;
 
+const migrateLegacyRetentionSettings = (current: Record<string, unknown>): Record<string, unknown> => {
+  const next = { ...current };
+  const enabled = next.autoDeleteEnabled === true;
+  const archivedOnly = next.sessionRetentionOnlyArchived === true;
+  const days = typeof next.autoDeleteAfterDays === 'number' && Number.isFinite(next.autoDeleteAfterDays)
+    ? Math.max(1, Math.min(365, Math.round(next.autoDeleteAfterDays))) : null;
+  const action = next.sessionRetentionAction === undefined ? 'archive' : next.sessionRetentionAction;
+  if (days !== null && archivedOnly && next.sessionAutoDeleteArchivedAfterDays === undefined) {
+    next.sessionAutoDeleteArchivedAfterDays = days;
+  } else if (days !== null && !archivedOnly && (action === 'archive')
+    && next.sessionAutoArchiveAfterDays === undefined) {
+    next.sessionAutoArchiveAfterDays = days;
+  }
+  if (enabled && archivedOnly && next.sessionAutoDeleteArchivedEnabled === undefined) {
+    next.sessionAutoDeleteArchivedEnabled = true;
+  } else if (enabled && !archivedOnly && action === 'archive' && next.sessionAutoArchiveEnabled === undefined) {
+    next.sessionAutoArchiveEnabled = true;
+  }
+  for (const key of ['autoDeleteEnabled', 'autoDeleteAfterDays', 'sessionRetentionAction', 'sessionRetentionOnlyArchived']) {
+    delete next[key];
+  }
+  return next;
+};
+
 // Read the merged persisted settings: shared file is canonical (synced with
 // Desktop and Web clients), globalState is kept as a migration fallback for
 // users upgrading from the pre-shared-sync era. Disk wins on conflicts.
@@ -375,7 +399,7 @@ const readPersistedSettings = (ctx?: BridgeContext): Record<string, unknown> => 
   const fromGlobalState = stripDerived(
     ctx?.context?.globalState.get<Record<string, unknown>>(SETTINGS_KEY) || {},
   );
-  const fromDisk = stripDerived(readSharedSettingsFromDisk());
+  const fromDisk = migrateLegacyRetentionSettings(stripDerived(readSharedSettingsFromDisk()));
 
   if (!eagerMigrationAttempted) {
     eagerMigrationAttempted = true;
@@ -393,7 +417,7 @@ const readPersistedSettings = (ctx?: BridgeContext): Record<string, unknown> => 
     }
   }
 
-  return { ...fromGlobalState, ...fromDisk };
+  return migrateLegacyRetentionSettings({ ...fromGlobalState, ...fromDisk });
 };
 
 // Everything the webview may see: the persisted document minus the keys the

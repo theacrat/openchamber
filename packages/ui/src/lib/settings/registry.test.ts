@@ -17,6 +17,7 @@ import {
   parseSettingsDocument,
   readAutoSaveSnapshot,
 } from './registry';
+import { migrateLegacyRetentionState } from '@/stores/useUIStore';
 import { renderSettingsRegistrySnapshot, SETTINGS_REGISTRY_SNAPSHOT_PATHS } from './registry-snapshot';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
@@ -141,6 +142,24 @@ describe('settings registry', () => {
     applySettingsToStores({ showReasoningTraces: false });
     expect(useUIStore.getState().showReasoningTraces).toBe(false);
     expect(useUIStore.getState().terminalShell).toBe('fish');
+  });
+
+  test('migrates legacy retention state without broadening deletion', () => {
+    const archive = { autoDeleteEnabled: true, autoDeleteAfterDays: 14 };
+    migrateLegacyRetentionState(archive);
+    expect(archive).toMatchObject({ sessionAutoArchiveEnabled: true, sessionAutoArchiveAfterDays: 14 });
+    expect(archive.autoDeleteEnabled).toBeUndefined();
+
+    const explicitFalse = {
+      autoDeleteEnabled: true, autoDeleteAfterDays: 14, sessionAutoArchiveEnabled: false,
+    };
+    migrateLegacyRetentionState(explicitFalse);
+    expect(explicitFalse.sessionAutoArchiveEnabled).toBe(false);
+
+    const activeDelete: Record<string, unknown> = { autoDeleteEnabled: true, autoDeleteAfterDays: 14, sessionRetentionAction: 'delete' };
+    migrateLegacyRetentionState(activeDelete);
+    expect(activeDelete.sessionAutoArchiveEnabled).toBeUndefined();
+    expect(activeDelete.sessionAutoDeleteArchivedEnabled).toBeUndefined();
   });
 
   test('applies the hidden-sections list together with its explicit marker', () => {

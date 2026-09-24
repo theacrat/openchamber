@@ -1027,7 +1027,7 @@ export const createSettingsRuntime = (deps) => {
     const days = typeof settings.autoDeleteAfterDays === 'number' && Number.isFinite(settings.autoDeleteAfterDays)
       ? Math.max(1, Math.min(365, Math.round(settings.autoDeleteAfterDays))) : null;
     const archivedOnly = settings.sessionRetentionOnlyArchived === true;
-    const action = settings.sessionRetentionAction;
+    const action = settings.sessionRetentionAction === undefined ? 'archive' : settings.sessionRetentionAction;
 
     if (days !== null) {
       const target = archivedOnly ? 'sessionAutoDeleteArchivedAfterDays'

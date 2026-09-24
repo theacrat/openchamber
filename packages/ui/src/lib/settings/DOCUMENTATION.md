@@ -32,9 +32,10 @@ v22 UI-store migration and server settings migration, compatible intent maps as
 follows. An enabled old archive policy maps to `sessionAutoArchiveEnabled` and
 `sessionAutoArchiveAfterDays`. An enabled archived-only policy maps to
 `sessionAutoDeleteArchivedEnabled` and `sessionAutoDeleteArchivedAfterDays`.
-Old active-session deletion has no safe equivalent, so it is discarded without
-enabling deletion. Existing new fields always win. The migration deletes all
-legacy fields and is idempotent.
+When the old action is missing, migration uses its old default of archive for
+the active-session scope. Old active-session deletion has no safe equivalent,
+so it is discarded without enabling deletion. Existing new fields always win.
+The migration deletes all legacy fields and is idempotent.
 
 ## Adding a setting
 

@@ -1229,6 +1229,28 @@ interface UIStore {
   setFileEditorKeymap: (value: FileEditorKeymap) => void;
 }
 
+export const migrateLegacyRetentionState = (state: Record<string, unknown>): void => {
+  const enabled = state.autoDeleteEnabled === true;
+  const archivedOnly = state.sessionRetentionOnlyArchived === true;
+  const days = typeof state.autoDeleteAfterDays === 'number' && Number.isFinite(state.autoDeleteAfterDays)
+    ? Math.max(1, Math.min(365, Math.round(state.autoDeleteAfterDays))) : null;
+  if (days !== null && archivedOnly && state.sessionAutoDeleteArchivedAfterDays === undefined) {
+    state.sessionAutoDeleteArchivedAfterDays = days;
+  } else if (days !== null && !archivedOnly && (state.sessionRetentionAction === undefined
+    || state.sessionRetentionAction === 'archive') && state.sessionAutoArchiveAfterDays === undefined) {
+    state.sessionAutoArchiveAfterDays = days;
+  }
+  if (enabled && archivedOnly && state.sessionAutoDeleteArchivedEnabled === undefined) {
+    state.sessionAutoDeleteArchivedEnabled = true;
+  } else if (enabled && !archivedOnly && (state.sessionRetentionAction === undefined
+    || state.sessionRetentionAction === 'archive') && state.sessionAutoArchiveEnabled === undefined) {
+    state.sessionAutoArchiveEnabled = true;
+  }
+  for (const key of ['autoDeleteEnabled', 'autoDeleteAfterDays', 'sessionRetentionAction', 'sessionRetentionOnlyArchived']) {
+    delete state[key];
+  }
+};
+
 
 export const useUIStore = create<UIStore>()(
   devtools(
@@ -2836,26 +2858,7 @@ export const useUIStore = create<UIStore>()(
           // v21 -> v22: replace legacy cleanup controls with independent
           // policies. Active-session deletion has no safe equivalent.
           if (version < 22) {
-            const enabled = state.autoDeleteEnabled === true;
-            const archivedOnly = state.sessionRetentionOnlyArchived === true;
-            const days = typeof state.autoDeleteAfterDays === 'number' && Number.isFinite(state.autoDeleteAfterDays)
-              ? Math.max(1, Math.min(365, Math.round(state.autoDeleteAfterDays))) : null;
-            if (days !== null && archivedOnly && state.sessionAutoDeleteArchivedAfterDays === undefined) {
-              state.sessionAutoDeleteArchivedAfterDays = days;
-            } else if (days !== null && !archivedOnly && state.sessionRetentionAction === 'archive'
-              && state.sessionAutoArchiveAfterDays === undefined) {
-              state.sessionAutoArchiveAfterDays = days;
-            }
-            if (enabled && archivedOnly && state.sessionAutoDeleteArchivedEnabled === undefined) {
-              state.sessionAutoDeleteArchivedEnabled = true;
-            } else if (enabled && !archivedOnly && state.sessionRetentionAction === 'archive'
-              && state.sessionAutoArchiveEnabled === undefined) {
-              state.sessionAutoArchiveEnabled = true;
-            }
-            delete state.autoDeleteEnabled;
-            delete state.autoDeleteAfterDays;
-            delete state.sessionRetentionAction;
-            delete state.sessionRetentionOnlyArchived;
+            migrateLegacyRetentionState(state);
           }
 
           // v20 -> v21: enable telemetry by default; preserve explicit choices.

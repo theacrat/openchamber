@@ -128,6 +128,20 @@ describe('settings runtime', () => {
     }
   });
 
+  it('uses the old archive default when the legacy action is missing', async () => {
+    const { runtime, settingsFilePath, cleanup } = await createRuntime();
+    try {
+      await fsPromises.writeFile(settingsFilePath, JSON.stringify({
+        autoDeleteEnabled: true, autoDeleteAfterDays: 21,
+      }));
+      await expect(runtime.readSettingsFromDiskMigrated()).resolves.toMatchObject({
+        sessionAutoArchiveEnabled: true, sessionAutoArchiveAfterDays: 21,
+      });
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('uses OpenChamber themes when a new install has no theme preferences', async () => {
     const { runtime, cleanup } = await createRuntime();
     try {
