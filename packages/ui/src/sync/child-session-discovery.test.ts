@@ -11,6 +11,12 @@ const session = (id: string, parentID?: string): Session => {
 }
 
 describe("selectNewChildSessions", () => {
+  test("refreshes a parent when a discovered child's directory or relationship changes", () => {
+    const child = session("child", "root")
+    const known = new Map([[child.id, child]])
+    expect([...newlyDiscoveredChildParents([{ ...child, directory: "/moved" }], known)]).toEqual(["root"])
+    expect([...newlyDiscoveredChildParents([{ ...child, parentID: "other" }], known)]).toEqual(["other"])
+  })
   test("materializes a remote relationship once while allowing missing local population", () => {
     const child = { ...session("remote", "root"), directory: "/other" }
     expect([...newlyDiscoveredChildParents([child], new Map())]).toEqual(["root"])

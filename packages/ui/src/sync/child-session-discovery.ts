@@ -8,11 +8,12 @@ export const childSessionsInDirectory = (sessions: readonly Session[], directory
 
 export const newlyDiscoveredChildParents = (
   sessions: readonly Session[],
-  knownSessions: ReadonlyMap<string, Pick<Session, "parentID">>,
+  knownSessions: ReadonlyMap<string, Pick<Session, "parentID" | "directory">>,
 ): Set<string> => {
   const parents = new Set<string>()
   for (const session of sessions) {
-    if (session.parentID && knownSessions.get(session.id)?.parentID !== session.parentID) parents.add(session.parentID)
+    const known = knownSessions.get(session.id)
+    if (session.parentID && (known?.parentID !== session.parentID || known.directory !== session.directory)) parents.add(session.parentID)
   }
   return parents
 }

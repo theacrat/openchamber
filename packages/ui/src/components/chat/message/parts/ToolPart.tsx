@@ -1823,8 +1823,10 @@ const ToolPartContent: React.FC<ToolPartProps> = ({
     }, [localStartAt, pinnedTime.start, time?.start]);
 
     const taskOutputString = React.useMemo(() => {
-        return typeof stateWithData.output === 'string' ? stateWithData.output : undefined;
-    }, [stateWithData.output]);
+        return typeof stateWithData.output === 'string' && stateWithData.output
+            ? stateWithData.output
+            : state?.status === 'error' ? coerceToText(state.error) : undefined;
+    }, [stateWithData.output, state]);
 
     const parsedTaskMetadata = React.useMemo(() => {
         return parseTaskMetadataBlock(taskOutputString);
@@ -1877,8 +1879,8 @@ const ToolPartContent: React.FC<ToolPartProps> = ({
     const resultChildDirectory = isTaskTool ? readManagedSessionResult(taskOutputString)?.directory : undefined;
     const childDirectory = indexedChildDirectory ?? resultChildDirectory ?? (isSessionSpawnTool(part.tool, input) ? '' : currentDirectory);
     const resolvedChildLookupId = childDirectory ? childSessionLookupId : '';
-    const childSessionMessages = useSessionMessageRecords(resolvedChildLookupId, childDirectory);
-    useEnsureSessionMessages(resolvedChildLookupId, childDirectory);
+    const childSessionMessages = useSessionMessageRecords(resolvedChildLookupId, childDirectory || undefined);
+    useEnsureSessionMessages(resolvedChildLookupId, childDirectory || undefined);
 
     const childSessionTaskSummaryEntries = React.useMemo<TaskToolSummaryEntry[]>(() => {
         if (!isTaskTool || !taskSessionId) {

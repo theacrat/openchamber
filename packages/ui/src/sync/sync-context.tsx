@@ -2609,6 +2609,7 @@ export function SyncProvider(props: {
     let stopped = false
     let running = false
 
+    const discoveredChildren = new Map<string, Map<string, Session>>()
     const discoverChildSessions = async (
       directory: string,
       store: StoreApi<DirectoryStore>,
@@ -2631,19 +2632,24 @@ export function SyncProvider(props: {
         const globalEntities = useGlobalSessionsStore.getState().entityById
         const newChildSessions = selectNewChildSessions(
           allSessions,
-          new Set(state.session.map((s) => s.id)),
+          new Set<string>(),
           new Set(parentSessionIds),
           (sessionId) => Boolean(globalEntities.get(sessionId)?.time?.archived),
         )
         if (newChildSessions.length === 0) return
-        const parentIdsForMaterialization = newlyDiscoveredChildParents(newChildSessions, globalEntities)
+        const knownChildren = discoveredChildren.get(directory) ?? new Map<string, Session>()
+        const parentIdsForMaterialization = newlyDiscoveredChildParents(newChildSessions, knownChildren)
         for (const session of newChildSessions) {
-          if (globalEntities.get(session.id)?.parentID !== session.parentID) {
+          const known = globalEntities.get(session.id)
+          if (!known || known.parentID !== session.parentID || known.directory !== session.directory) {
             useGlobalSessionsStore.getState().upsertSession(session)
           }
+          knownChildren.set(session.id, session)
         }
+        discoveredChildren.set(directory, knownChildren)
         // Collect unique parent IDs for materialization
-        const localChildren = childSessionsInDirectory(newChildSessions, directory)
+        const existingIds = new Set(state.session.map((session) => session.id))
+        const localChildren = childSessionsInDirectory(newChildSessions, directory).filter((session) => !existingIds.has(session.id))
         if (localChildren.length > 0) store.setState((state: DirectoryStore) => {
           const sessions = [...state.session, ...localChildren].sort((a, b) =>
             a.id < b.id ? -1 : a.id > b.id ? 1 : 0

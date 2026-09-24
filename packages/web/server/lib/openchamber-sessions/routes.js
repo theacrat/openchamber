@@ -260,17 +260,25 @@ const forkSession = async ({ client, sessionID, messageID, parentID, directory }
     const exported = await client.session.export({ sessionID });
     const boundary = messageID ? exported.messages.findIndex((message) => message.id === messageID) : exported.messages.length;
     if (boundary < 0) throw new OpenChamberControlError('Fork boundary message not found', 404);
-    if (exported.messages.length === 0) throw new OpenChamberControlError('Cannot fork an empty session', 400);
     const info = {
       ...exported.info,
       id: Session.ID.create(),
       parentID,
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       time: { created: Date.now(), updated: Date.now() },
     };
     delete info.revert;
     delete info.outcome;
     delete info.fork;
-    const messages = exported.messages.slice(0, boundary).map((message) => ({ ...message, id: SessionMessage.ID.create() }));
+    const prefix = exported.messages.slice(0, boundary);
+    while (prefix.length > 0) {
+      const tail = prefix.at(-1);
+      if (tail.type !== 'assistant' || (tail.time.completed && !tail.content.some((part) =>
+        part.type === 'tool' && (part.state.status === 'pending' || part.state.status === 'running')))) break;
+      prefix.pop();
+    }
+    const messages = prefix.map((message) => ({ ...message, id: SessionMessage.ID.create() }));
     return client.session.import({ info, messages, location: { directory } });
   }
   const session = await client.session.fork({
@@ -761,21 +769,39 @@ export const createOpenChamberSessionService = (dependencies) => {
     const ids = new Set();
     const failedRoots = [];
     const client = clientFor('');
-    for (const rootID of parsed.ids) {
+    const traverseRoot = async (rootID) => {
       const subtree = new Set([rootID]);
       try {
-        for (const parentID of subtree) {
-          let cursor;
-          do {
-            const page = await client.session.list(cursor ? { cursor } : { parentID });
-            for (const child of page.data) subtree.add(child.id);
-            cursor = page.cursor?.next;
-          } while (cursor);
+        const queue = [rootID];
+        for (let offset = 0; offset < queue.length;) {
+          const batch = queue.slice(offset, offset + 4);
+          offset += batch.length;
+          const results = await Promise.allSettled(batch.map(async (parentID) => {
+            let cursor;
+            const children = [];
+            do {
+              const page = await client.session.list(cursor ? { cursor } : { parentID });
+              children.push(...page.data);
+              cursor = page.cursor?.next;
+            } while (cursor);
+            return children;
+          }));
+          for (const result of results) {
+            if (result.status === 'rejected') throw result.reason;
+            for (const child of result.value) {
+              if (subtree.has(child.id)) continue;
+              subtree.add(child.id);
+              queue.push(child.id);
+            }
+          }
         }
         for (const id of subtree) ids.add(id);
       } catch {
         failedRoots.push(rootID);
       }
+    };
+    for (let offset = 0; offset < parsed.ids.length; offset += 4) {
+      await Promise.all(parsed.ids.slice(offset, offset + 4).map(traverseRoot));
     }
     const activeIds = [];
     for (const id of ids) {

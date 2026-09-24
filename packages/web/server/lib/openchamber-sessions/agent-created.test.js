@@ -8,7 +8,7 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
 });
 
-async function harness() {
+async function harness(listChildren) {
   const app = express();
   app.use(express.json());
   const calls = [];
@@ -21,7 +21,8 @@ async function harness() {
   app.get('/api/agent', (req, res) => res.json({ data: [] }));
   app.get('/api/model', (req, res) => res.json({ data: [] }));
   app.get('/api/config', (req, res) => res.json({ data: [] }));
-  app.get('/api/session', (req, res) => {
+  app.get('/api/session', async (req, res) => {
+    if (listChildren) return res.json(await listChildren(req.query));
     if (req.query.parentID === 'ses_broken') return res.status(500).json({ error: 'unavailable' });
     if (req.query.parentID === 'ses_paged') return res.json({ data: [{ id: 'ses_page_one' }], cursor: { next: 'second-page' } });
     if (req.query.cursor === 'second-page') return res.json({ data: [{ id: 'ses_page_two' }], cursor: {} });
@@ -63,10 +64,48 @@ async function harness() {
   };
   const sessionService = createOpenChamberSessionService(dependencies);
   const service = createOpenChamberControlService({ ...dependencies, sessionService });
-  return { service, sessionService, calls };
+  return { service, sessionService, calls, history, parent };
 }
 
 describe('agent-created session relationship over the official client', () => {
+  it('bounds parallel root and descendant reads while visiting every child', async () => {
+    let active = 0;
+    let peak = 0;
+    const { sessionService } = await harness(async ({ parentID }) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      active -= 1;
+      return { data: parentID.startsWith('root')
+        ? Array.from({ length: 9 }, (_, index) => ({ id: `${parentID}_child_${index}` })).filter(() => !parentID.includes('_'))
+        : [], cursor: {} };
+    });
+    const result = await sessionService.archive({ ids: ['root1', 'root2', 'root3', 'root4', 'root5'] });
+    expect(result.failedIds).toEqual([]);
+    expect(result.archived).toHaveLength(50);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(16);
+    expect(active).toBe(0);
+  });
+  it.each(['pending', 'running', 'incomplete'])('excludes trailing %s assistant history and resets usage', async (status) => {
+    const { sessionService, calls, history, parent } = await harness();
+    parent.cost = 123;
+    parent.tokens = { input: 10, output: 20, reasoning: 30, cache: { read: 40, write: 50 } };
+    history.pop();
+    if (status === 'incomplete') delete history[1].time.completed;
+    else history[1].content[0].state.status = status;
+    await sessionService.fork('ses_source', { directory: '/destination', prompt: 'Continue' }, { parentID: 'ses_parent' }).catch(() => undefined);
+    const imported = calls.find((call) => call.route === 'import')?.body;
+    expect(imported.messages.map((message) => message.type)).toEqual(['user']);
+    expect(imported.info.cost).toBe(0);
+    expect(imported.info.tokens).toEqual({ input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } });
+  });
+  it('allows an empty source prefix', async () => {
+    const { sessionService, calls, history } = await harness();
+    history.length = 0;
+    await sessionService.fork('ses_source', { directory: '/destination', prompt: 'Continue' }, { parentID: 'ses_parent' }).catch(() => undefined);
+    expect(calls.find((call) => call.route === 'import')?.body.messages).toEqual([]);
+  });
   it('imports only pre-boundary history with new message IDs and preserved tool references at the destination', async () => {
     const { sessionService, calls } = await harness();
     await sessionService.fork('ses_source', { directory: '/destination', messageId: 'msg_boundary', prompt: 'Continue' }, { parentID: 'ses_parent' }).catch(() => undefined);

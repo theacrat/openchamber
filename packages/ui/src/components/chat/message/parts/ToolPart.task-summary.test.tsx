@@ -151,6 +151,24 @@ test('subagent patch summaries show file names and update when the same call cha
 
     await renderPatch(['src/single.ts']);
     expect(container.textContent).toContain('single.ts');
+    for (const action of ['session.create', 'session.fork']) {
+      const failed: ToolPartData = {
+        ...parent, tool: 'openchamber',
+        state: { status: 'error', input: { action }, error: 'Parent session unavailable', time: { start: 1, end: 2 } },
+      };
+      await act(async () => root.render(
+        <SyncProvider sdk={sdk} directory="/workspace">
+          <I18nProvider>
+            <ThemeSystemContext.Provider value={themeContext}>
+              <ToolPart part={failed} isExpanded isMobile={false} onToggle={() => {}} />
+            </ThemeSystemContext.Provider>
+          </I18nProvider>
+        </SyncProvider>,
+      ));
+      const outputButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Output');
+      expect(outputButton).toBeDefined();
+      expect(container.textContent).not.toContain('No directory provided');
+    }
   } finally {
     await act(async () => { root.unmount(); });
     useDirectoryStore.setState({ currentDirectory: previousDirectory });
