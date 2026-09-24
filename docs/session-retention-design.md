@@ -34,7 +34,13 @@ type AutomaticRetentionPolicy =
   | { kind: 'merged' }
   | { kind: 'archived'; days: number };
 
-runAutomaticSessionRetention({ github }): Promise<void>;
+type AutomaticRetentionResult = {
+  archivedIds: string[];
+  deletedIds: string[];
+  failedIds: string[];
+};
+
+runAutomaticSessionRetention({ github }): Promise<AutomaticRetentionResult>;
 ```
 
 The policy owner hides session loading, activity checks, pin protection, merge checks, runtime changes, and action ordering from the hook. The hook owns wakeups and disposal only. Model the Domain motivates the policy union. Type System Discipline keeps unknown or failed PR status distinct from merged status.
@@ -57,7 +63,7 @@ A server scheduler would run with every client closed and could serialise mutati
 
 A passive subscriber to cached branch PR status avoids new reads but cannot distinguish explicit linked PRs, fork identities, stale data, or later session activity. It is not sufficient authority for archiving.
 
-The chosen base is the shared runner with fresh explicit PR reads and delivery-owned restoration. Independent review of this choice is requested through the parent session because this session cannot spawn nested agents.
+The chosen base is the shared runner with fresh explicit PR reads and delivery-owned restoration.
 
 ## Runtime coverage
 
@@ -76,17 +82,3 @@ The chosen base is the shared runner with fresh explicit PR reads and delivery-o
 3. Test fresh merge identity, partial PR failures, post-merge activity, concurrent prompts, failed status reads, runtime switches, queue protection, and overlapping cleanup.
 4. Test prompt restoration through immediate and queued delivery, including failed restoration and disabled behaviour.
 5. Run settings registry generation, affected package checks, focused tests, dead-code analysis, and a browser check of the actual settings controls.
-6. Review the final diff independently and open a PR against `theacrat/openchamber:main`. Do not merge it.
-
-## Work sequence
-
-- [x] Read the Principles index and ground the existing retention, pin, settings, and PR contracts.
-- [x] Frame the scope and capture the existing test baseline.
-- [x] Write the design before implementation.
-- [ ] Implement policy selection and safety checks with focused tests.
-- [ ] Implement settings, translations, search, and persistence.
-- [ ] Implement delivery-owned prompt restoration and merge metadata.
-- [ ] Run integrated checks and browser verification.
-- [ ] Complete independent review and open the fork PR.
-
-The parallel work boundary is settings versus retention execution versus delivery integration. Each writer owns a separate worktree. Shared contracts are fixed in this document before workers edit them.

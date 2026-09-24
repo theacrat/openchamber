@@ -14,6 +14,7 @@ import { isSessionPinned, useSessionPinnedStore } from '@/stores/useSessionPinne
 import { createMessageQueueTarget, useMessageQueueStore } from '@/stores/messageQueueStore';
 import { useGlobalBlockingRequestsStore } from './global-blocking-requests';
 import { runBackgroundNetworkTask } from '@/lib/background-network';
+import { getSessionRestoredAt } from './session-retention-state';
 
 const DAY_MS = 86_400_000;
 export const RETENTION_KEEP_RECENT = 5;
@@ -269,13 +270,10 @@ async function mergedAfterLastActivity(
     let read = reads.get(pull.url);
     if (!read) {
       read = runBackgroundNetworkTask(async () => {
-        const context = await github.prContext(session.directory, pull.number, {
-          includeDiff: false, includeCheckDetails: false,
-          sourceRepo: { owner: match[1], repo: match[2] },
-        });
-        if (!context.connected || context.pr?.state !== 'merged' || context.pr.url !== pull.url
-          || context.pr.number !== pull.number || !context.pr.mergedAt) return null;
-        const timestamp = Date.parse(context.pr.mergedAt);
+        const context = await github.prMergeState(session.directory, pull.number, { owner: match[1], repo: match[2] });
+        if (!context.connected || context.state !== 'merged' || context.url !== pull.url
+          || context.number !== pull.number || !context.mergedAt) return null;
+        const timestamp = Date.parse(context.mergedAt);
         return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
       });
       reads.set(pull.url, read);
@@ -284,7 +282,7 @@ async function mergedAfterLastActivity(
     if (mergedAt === null) return false;
     latestMerge = Math.max(latestMerge, mergedAt);
   }
-  return session.time.updated <= latestMerge;
+  return Math.max(session.time.updated, getSessionRestoredAt(session.id)) <= latestMerge;
 }
 
 export async function runAutomaticSessionRetention({ github }: { github?: GitHubAPI } = {}): Promise<AutomaticRetentionResult> {

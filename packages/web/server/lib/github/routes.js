@@ -1909,4 +1909,29 @@ export function registerGitHubRoutes(app) {
       return res.status(500).json({ error: error.message || 'Failed to load GitHub PR context' });
     }
   });
+
+  app.get('/api/github/pr/merge-state', async (req, res) => {
+    try {
+      const directory = typeof req.query?.directory === 'string' ? req.query.directory.trim() : '';
+      const number = typeof req.query?.number === 'string' ? Number(req.query.number) : null;
+      if (!directory || !Number.isInteger(number) || number < 1) return res.status(400).json({ error: 'directory and number are required' });
+      const { getOctokitOrNull } = await getGitHubLibraries();
+      const octokit = getOctokitOrNull();
+      if (!octokit) return res.json({ connected: false });
+      const repo = await resolveRepoForRequest(octokit, directory, getRequestedRepo(req));
+      if (!repo) return res.json({ connected: true, number, url: '', state: 'closed', mergedAt: null });
+      const response = await octokit.rest.pulls.get({ owner: repo.owner, repo: repo.repo, pull_number: number });
+      const pr = response?.data;
+      if (!pr) return res.status(404).json({ error: 'PR not found' });
+      return res.json({
+        connected: true,
+        number: pr.number,
+        url: pr.html_url,
+        state: pr.merged || pr.merged_at ? 'merged' : (pr.state === 'closed' ? 'closed' : 'open'),
+        mergedAt: pr.merged_at || null,
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error?.message || 'Failed to load pull request state' });
+    }
+  });
 }

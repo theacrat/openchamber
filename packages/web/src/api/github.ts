@@ -248,6 +248,15 @@ export const createWebGitHubAPI = ({ urls }: WebGitHubAPIOptions): GitHubAPI => 
     return body;
   },
 
+  async prMergeState(directory: string, number: number, sourceRepo?: { owner: string; repo: string } | null) {
+    const params = new URLSearchParams({ directory, number: String(number) });
+    if (sourceRepo?.owner && sourceRepo.repo) { params.set('owner', sourceRepo.owner); params.set('repo', sourceRepo.repo); }
+    const response = await runtimeFetch(urls.api('/api/github/pr/merge-state', params), { method: 'GET', headers: { Accept: 'application/json' } });
+    const body = await jsonOrNull<{ connected: boolean; number: number; url: string; state: 'open' | 'closed' | 'merged'; mergedAt: string | null; error?: string }>(response);
+    if (!response.ok || !body) throw new Error(body?.error || response.statusText || 'Failed to load pull request state');
+    return body;
+  },
+
   async issuesList(directory: string, options?: { page?: number; query?: string }): Promise<GitHubIssuesListResult> {
     const page = options?.page ?? 1;
     const params = new URLSearchParams({
