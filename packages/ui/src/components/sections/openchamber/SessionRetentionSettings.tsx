@@ -4,6 +4,7 @@ import {
   SettingsSection,
   SettingsFieldRow,
   SettingsCheckboxRow,
+  SETTINGS_FIELDS_STACK_CLASS,
   SETTINGS_NUMBER_INPUT_CLASS,
 } from '@/components/sections/shared/SettingsSection';
 import { cn } from '@/lib/utils';
@@ -38,8 +39,8 @@ export const SessionRetentionSettings: React.FC = () => {
       description={t('settings.openchamber.sessionRetention.foregroundBoundary')}
       info={t('settings.openchamber.sessionRetention.tooltip')}
     >
-      <div className="space-y-5">
-        <div className="space-y-3">
+      <div className={SETTINGS_FIELDS_STACK_CLASS}>
+        <div className="space-y-4">
           <SettingsCheckboxRow settingsItem="sessions.auto-archive" checked={autoArchiveEnabled} onChange={setAutoArchiveEnabled}
             label={t('settings.openchamber.sessionRetention.field.autoArchive')} ariaLabel={t('settings.openchamber.sessionRetention.field.autoArchive')} />
           <SettingsFieldRow settingsItem="sessions.auto-archive-period" label={t('settings.openchamber.sessionRetention.field.autoArchivePeriod')}>
@@ -48,13 +49,13 @@ export const SessionRetentionSettings: React.FC = () => {
             <span className="typography-ui-label text-muted-foreground">{t('settings.openchamber.sessionRetention.field.days')}</span>
           </SettingsFieldRow>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <SettingsCheckboxRow settingsItem="sessions.auto-archive-on-merge" checked={autoArchiveOnMerge} onChange={setAutoArchiveOnMerge}
             label={t('settings.openchamber.sessionRetention.field.autoArchiveOnMerge')} ariaLabel={t('settings.openchamber.sessionRetention.field.autoArchiveOnMerge')} />
           <SettingsCheckboxRow settingsItem="sessions.auto-unarchive-on-prompt" checked={autoUnarchiveOnPrompt} onChange={setAutoUnarchiveOnPrompt}
             label={t('settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt')} ariaLabel={t('settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt')} />
         </div>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <SettingsCheckboxRow settingsItem="sessions.retention-exclude-pinned" checked={excludePinned} onChange={setExcludePinned}
             label={t('settings.openchamber.sessionRetention.field.excludePinned')} ariaLabel={t('settings.openchamber.sessionRetention.field.excludePinned')} />
           <SettingsCheckboxRow settingsItem="sessions.auto-delete-archived" checked={autoDeleteArchivedEnabled} onChange={setAutoDeleteArchivedEnabled}

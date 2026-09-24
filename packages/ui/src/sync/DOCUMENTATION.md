@@ -300,12 +300,12 @@ explicit lifecycle edge; the store coalesces an overlapping in-flight load.
 
 ### Session retention
 
-`session-retention.ts` owns eligibility and cleanup execution;
-`useSessionAutoCleanup.ts` connects it to the app and Settings. Manual and
-automatic runs share a lock acquired before loading. Each run requests a fresh
-complete global snapshot and refuses the loader's error/fallback state. A
-runtime switch stops the batch. The independent automatic policies check on
-mount, when the app becomes visible, and every five minutes while visible.
+`session-retention.ts` owns eligibility and automatic cleanup execution;
+`useSessionAutoCleanup.ts` connects it to the app. Automatic runs acquire a
+lock before loading, request a fresh complete global snapshot, and refuse the
+loader's error/fallback state. A runtime switch stops the batch. The independent
+automatic policies check on mount, when the app becomes visible, and every five
+minutes while visible.
 Automatic policies cover inactive archive, merged-PR archive, prompt restore,
 pin exclusion, and archived-session deletion. Each target is re-read and its
 current policy, age, activity, queue, blocking requests, and hierarchy are
@@ -342,7 +342,7 @@ blocks deletion of its ancestors while unrelated sessions continue.
 
 Cleanup uses the canonical archive/delete actions, including confirmed `404`
 deletion, persisted-state cleanup and runtime guards. Settings shares the run
-state and shows loading or fetch failure separately from an eligible count.
+state and leaves fetch failures distinct from successful empty results.
 
 ### Live cross-directory session/status view
 

@@ -24,7 +24,7 @@ The settings registry owns these instance preferences:
 | `sessionAutoDeleteArchivedEnabled` | `false` |
 | `sessionAutoDeleteArchivedAfterDays` | `30` |
 
-Periods accept whole days from 1 through 365. The old cleanup controls are removed. Migration maps an enabled active-session archive to `sessionAutoArchiveEnabled` and its period. It maps an enabled archived-only cleanup to `sessionAutoDeleteArchivedEnabled` and its period. An old active-session delete policy has no safe equivalent and is discarded without enabling deletion. Existing new values always win. The migration removes all old keys and is idempotent.
+Periods accept whole days from 1 through 365. The old cleanup controls are removed. Migration maps an enabled active-session archive to `sessionAutoArchiveEnabled` and its period. A missing old action uses the old default of archive. It maps an enabled archived-only cleanup to `sessionAutoDeleteArchivedEnabled` and its period. An old active-session delete policy has no safe equivalent and is discarded without enabling deletion. Existing new values always win. The migration removes all old keys and is idempotent.
 
 `session-retention.ts` remains the owner of candidate selection and execution. Policies become named variants rather than combinations of action and archive flags. The main application supplies its runtime GitHub and Git APIs to the runner. The runner returns completed and failed IDs and never converts failed discovery into an empty authoritative result.
 
