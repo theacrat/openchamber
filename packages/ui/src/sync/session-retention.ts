@@ -295,6 +295,26 @@ const automaticProtectedIds = (sessions: readonly Session[]): Set<string> => {
   return protectedIds;
 };
 
+const hasUnarchivedDescendant = (sessions: readonly Session[], sessionId: string): boolean => {
+  const childrenByParent = new Map<string, Session[]>();
+  for (const session of sessions) {
+    if (!session.parentID) continue;
+    const children = childrenByParent.get(session.parentID) ?? [];
+    children.push(session);
+    childrenByParent.set(session.parentID, children);
+  }
+  const queue = [...(childrenByParent.get(sessionId) ?? [])];
+  const seen = new Set<string>();
+  while (queue.length > 0) {
+    const child = queue.shift();
+    if (!child || seen.has(child.id)) continue;
+    seen.add(child.id);
+    if (!isArchived(child)) return true;
+    queue.push(...(childrenByParent.get(child.id) ?? []));
+  }
+  return false;
+};
+
 async function mergedAfterLastActivity(
   session: Session,
   github: Pick<GitHubAPI, 'prStatus'>,
@@ -405,7 +425,11 @@ export async function runAutomaticSessionRetention({ github, git }: {
             if (policy.kind !== 'merged' && (!timestamp || timestamp >= Date.now() - policy.days * DAY_MS)) return false;
             const currentSessions = [...current.entityById.values()];
             if (automaticProtectedIds(currentSessions).has(id)) return false;
-            return policy.kind !== 'archived' || !currentSessions.some((child) => child.parentID === id);
+            // The host cascades archive into descendants. Each child must earn
+            // archive eligibility independently before its parent may run.
+            return policy.kind === 'archived'
+              ? !currentSessions.some((child) => child.parentID === id)
+              : !hasUnarchivedDescendant(currentSessions, id);
           };
           if (!isStillEligible()) continue;
           let admissionSkipped = false;

@@ -306,6 +306,10 @@ lock before loading, request a fresh complete global snapshot, and refuse the
 loader's error/fallback state. A runtime switch stops the batch. The independent
 automatic policies check on mount, when the app becomes visible, and every five
 minutes while visible.
+The host's manual archive operation cascades through descendants. Automatic
+retention therefore waits until every direct child is archived before archiving
+a parent. Children must qualify independently; a recent or restored child cannot
+be archived indirectly through an eligible parent.
 Automatic policies cover inactive archive, merged-PR archive, prompt restore,
 pin exclusion, and archived-session deletion. Each target is re-read and its
 current policy, age, activity, queue, blocking requests, and hierarchy are
@@ -384,6 +388,11 @@ Reconciliation walks the running turns and asks the snapshot whether it covers e
 **Only the stamp expires a persisted start.** A snapshot that covers a session without reporting it busy is not proof the turn ended: bootstrap fetches status and sessions in parallel and directory scopes resolve at different times, so a snapshot legitimately arrives before it can see a running session. Treating one of those as a settle deleted the start moments before the real busy snapshot arrived, which reset every counter to zero on reload. Settles therefore act only on sessions that already have a live start in this page session.
 
 Child-session discovery (`child-session-discovery.ts`) adds only children the global sessions cache does not list as archived: the listing asks for active children, but a response that left the server before an archive completed still carries them without `time.archived`, and re-adding them would show the just-archived subagents as active orphans until the next refresh.
+
+Parent-scoped discovery can return children in other directories. Every accepted
+record updates the global index; only records owned by the queried directory
+enter that directory's store. An unopened child directory needs no bootstrap
+to appear in the parent's subagent list.
 
 The active-session watchdog in `sync-context.tsx` sends status recovery through the active-session priority of `runBackgroundNetworkTask`. Its child-session discovery pages use `runSessionListNetworkTask`, alongside global and bootstrap session pages. Both lanes live in `@/lib/background-network`. Git, skills, and directory initialization use the background lane. These limits reserve browser connections for interactive message requests rather than letting startup fan-out occupy the whole pool.
 

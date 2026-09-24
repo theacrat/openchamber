@@ -95,7 +95,7 @@ describe('useSessionGrouping malformed hierarchy fallbacks', () => {
     }
   });
 
-  test('renders a deterministic cycle/orphan fallback tree without duplicate sessions', async () => {
+  test('keeps cycle recovery but does not promote a child whose parent is outside the project', async () => {
     type GroupingCapture = { buildGroupedSessions?: ReturnType<typeof useSessionGrouping>['buildGroupedSessions'] };
     const state: GroupingCapture = {};
     const Harness = () => {
@@ -115,7 +115,7 @@ describe('useSessionGrouping malformed hierarchy fallbacks', () => {
     if (!buildGroupedSessions) throw new Error('grouping callback was not mounted');
 
     const groups = buildGroupedSessions(
-      [session('a', 'b'), session('b', 'a'), session('orphan', 'missing')],
+      [session('a', 'b'), session('b', 'a'), session('orphan', 'missing'), session('grandchild', 'orphan')],
       '/workspace',
       [],
       null,
@@ -124,8 +124,19 @@ describe('useSessionGrouping malformed hierarchy fallbacks', () => {
     const rootGroup = groups.find((group) => group.isMain);
     const ids = collectIds(rootGroup?.sessions ?? []);
 
-    expect(ids).toEqual(['orphan', 'a', 'b']);
+    expect(ids).toEqual(['a', 'b']);
     expect(new Set(ids).size).toBe(ids.length);
+
+    let parentReads = 0;
+    const deepOrphans = Array.from({ length: 1000 }, (_, index) => {
+      const item = session(`deep-${index}`, index === 0 ? 'absent' : `deep-${index - 1}`);
+      const parent = item.parentID;
+      Object.defineProperty(item, 'parentID', { get: () => { parentReads += 1; return parent; } });
+      return item;
+    });
+    const deepGroups = buildGroupedSessions(deepOrphans, '/workspace', [], null, false);
+    expect(collectIds(deepGroups.flatMap((group) => group.sessions))).toEqual([]);
+    expect(parentReads).toBeLessThan(15000);
   });
 
   test('uses the row-local descendant snapshot for archive and hard-delete actions', async () => {

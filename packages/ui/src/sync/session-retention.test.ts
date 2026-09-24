@@ -158,6 +158,32 @@ describe('retention execution', () => {
     }
   });
 
+  test('does not cascade merge archive into a child restored after the merge', async () => {
+    seed([session('parent'), session('restored-child', { parentID: 'parent',
+      metadata: { openchamber: { sessionRetentionRestoredAt: now - day } } })]);
+    useUIStore.setState({ sessionAutoArchiveOnMerge: true });
+    const archive = archiveSuccess();
+    expect((await runAutomaticSessionRetention(mergeAPIs())).archivedIds).toEqual([]);
+    expect(archive.mock.calls).toHaveLength(0);
+  });
+
+  test('does not cascade inactive archive into a recent child', async () => {
+    seed([session('parent'), session('recent-child', { parentID: 'parent',
+      time: { created: now - day, updated: now - day } })]);
+    useUIStore.setState({ sessionAutoArchiveEnabled: true });
+    const archive = archiveSuccess();
+    expect((await runAutomaticSessionRetention()).archivedIds).toEqual([]);
+    expect(archive.mock.calls).toHaveLength(0);
+  });
+
+  test('checks descendants below archived intermediates before inactive archive', async () => {
+    seed([session('parent'), archived('archived-child', { parentID: 'parent' }), session('recent-grandchild', { parentID: 'archived-child', time: { created: now - day, updated: now - day } })]);
+    useUIStore.setState({ sessionAutoArchiveEnabled: true });
+    const archive = archiveSuccess();
+    expect((await runAutomaticSessionRetention()).archivedIds).toEqual([]);
+    expect(archive.mock.calls).toHaveLength(0);
+  });
+
   test('a restored PR1 stays active but a later PR2 merge can archive the same branch', async () => {
     const restored = session('restored-branch', { metadata: { openchamber: { sessionRetentionRestoredAt: now - 3 * day } } });
     seed([restored]);

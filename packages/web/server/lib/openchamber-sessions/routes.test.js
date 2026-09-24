@@ -92,6 +92,7 @@ vi.mock('@opencode/client', () => ({
       clientOptions.push(options);
       return {
         session: {
+          list: async () => ({ data: [], cursor: {} }),
           create: sessionCreateMock,
           fork: sessionForkMock,
           get: sessionGetMock,
