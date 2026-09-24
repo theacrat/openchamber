@@ -353,7 +353,10 @@ export async function runAutomaticSessionRetention({ github }: { github?: GitHub
           if (policy.kind === 'merged' && (!github || !await mergedAfterLastActivity(session, github, mergeReads))) continue;
           if (!currentRuntime()) return result;
         const directory = resolveGlobalSessionDirectory(session);
-        if (!directory) continue;
+        if (!directory) {
+          result.failedIds.push(id);
+          continue;
+        }
         const fresh = await opencodeClient.getSession(id, directory);
           if (!currentRuntime()) return result;
           if (fresh.time.updated !== session.time.updated || fresh.time.archived !== session.time.archived
@@ -361,9 +364,16 @@ export async function runAutomaticSessionRetention({ github }: { github?: GitHub
           const latestStatuses = await opencodeClient.getActiveSessionStatuses();
           if (!currentRuntime()) return result;
           if (latestStatuses === null) throw new Error('Session activity could not be confirmed');
+           const finalSettings = useUIStore.getState();
+           const stillEnabled = policy.kind === 'inactive'
+             ? finalSettings.sessionAutoArchiveEnabled && finalSettings.sessionAutoArchiveAfterDays === policy.days
+             : policy.kind === 'merged'
+               ? finalSettings.sessionAutoArchiveOnMerge
+               : finalSettings.sessionAutoDeleteArchivedEnabled && finalSettings.sessionAutoDeleteArchivedAfterDays === policy.days;
+          if (!stillEnabled) break;
           const current = useGlobalSessionsStore.getState();
           if (current.status !== 'ready' || current.entityById.get(id) !== session) continue;
-          const currentTimestamp = policy.kind === 'archived' ? session.time.archived : session.time.updated;
+          const currentTimestamp = policy.kind === 'archived' ? fresh.time.archived : fresh.time.updated;
           const currentCutoff = policy.kind === 'merged' ? 0 : Date.now() - policy.days * DAY_MS;
           if (policy.kind !== 'merged' && (!currentTimestamp || currentTimestamp >= currentCutoff)) continue;
           if (automaticProtectedIds([...current.entityById.values()]).has(id) || latestStatuses[id]) continue;

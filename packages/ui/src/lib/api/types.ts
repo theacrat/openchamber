@@ -1373,13 +1373,10 @@ export interface GitHubAPI {
     number: number,
     options?: { includeDiff?: boolean; includeCheckDetails?: boolean; sourceRepo?: GitHubRepoSelector | null }
   ): Promise<GitHubPullRequestContextResult>;
-  prMergeState(directory: string, number: number, sourceRepo?: GitHubRepoSelector | null): Promise<{
-    connected: boolean;
-    number: number;
-    url: string;
-    state: 'open' | 'closed' | 'merged';
-    mergedAt: string | null;
-  }>;
+  prMergeState(directory: string, number: number, sourceRepo?: GitHubRepoSelector | null): Promise<
+    | { connected: false }
+    | { connected: true; number: number; url: string; state: 'open' | 'closed' | 'merged'; mergedAt: string | null }
+  >;
 
   issuesList(directory: string, options?: { page?: number; query?: string }): Promise<GitHubIssuesListResult>;
   issueGet(directory: string, number: number, options?: { sourceRepo?: GitHubRepoSelector | null }): Promise<GitHubIssueGetResult>;
