@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { type OpenCodeManager } from './opencode';
 import { handleStandardGitBridgeMessage } from './bridge-git-runtime';
+import { handleGitHubBridgeMessage } from './bridge-github-runtime';
 import { handleSpecialGitBridgeMessage } from './bridge-git-special-runtime';
 import { handleFsBridgeMessage } from './bridge-fs-runtime';
 import { handleConfigBridgeMessage } from './bridge-config-runtime';
-import { handleSystemBridgeMessage } from './bridge-system-runtime';
+import { handleSystemBridgeMessage, sessionMetadataOnOpenCode } from './bridge-system-runtime';
 import { handleProxyBridgeMessage } from './bridge-proxy-runtime';
 import { handlePermissionAutoAcceptBridgeMessage } from './bridge-permission-auto-accept-runtime';
 import { createProjectSetupStore, handleProjectSetupBridgeMessage } from './bridge-project-setup-runtime';
@@ -153,11 +154,21 @@ export async function handleBridgeMessage(message: BridgeRequest, ctx?: BridgeCo
         sanitizeForwardHeaders,
         collectHeaders,
         base64EncodeUtf8,
+        shouldRestoreArchivedSession: async () => {
+          const settings = await readSettings();
+          return settings?.sessionAutoUnarchiveOnPrompt === true;
+        },
+        restoreArchivedSession: async (sessionId) => {
+          return sessionStateStore.restoreForDelivery(sessionId, sessionMetadataOnOpenCode(ctx?.manager));
+        },
       },
     );
     if (proxyResponse) {
       return proxyResponse;
     }
+
+    const githubResponse = await handleGitHubBridgeMessage(message);
+    if (githubResponse) return githubResponse;
 
     switch (type) {
       case 'api:github/auth:status':
@@ -166,7 +177,6 @@ export async function handleBridgeMessage(message: BridgeRequest, ctx?: BridgeCo
       case 'api:github/auth:disconnect':
       case 'api:github/auth:activate':
       case 'api:github/me':
-      case 'api:github/pr:status':
       case 'api:github/pr:create':
       case 'api:github/pr:update':
       case 'api:github/pr:merge':

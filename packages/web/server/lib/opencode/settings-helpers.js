@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { z } from 'zod';
 
 import { isAgentMemoryFeatureAvailable } from '../agent-memory/feature-flag.js';
 
@@ -7,6 +8,8 @@ import { isAgentMemoryFeatureAvailable } from '../agent-memory/feature-flag.js';
 // The server is plain ESM without a bundler, so the snapshot is read with
 // `createRequire` (import attributes differ across the Node versions we run on).
 const settingsRegistry = createRequire(import.meta.url)('./settings-registry.json');
+const retentionBoolean = z.boolean();
+const retentionDays = z.number().transform((value) => Math.max(1, Math.min(365, Math.round(value))));
 
 /**
  * Whether a client may persist this key through PUT /api/config/settings:
@@ -468,18 +471,23 @@ export const createSettingsHelpers = (dependencies) => {
     if (Array.isArray(candidate.usageDropdownProviders)) {
       result.usageDropdownProviders = normalizeStringArray(candidate.usageDropdownProviders);
     }
-    if (typeof candidate.autoDeleteEnabled === 'boolean') {
-      result.autoDeleteEnabled = candidate.autoDeleteEnabled;
+    for (const key of [
+      'sessionAutoArchiveOnMerge',
+      'sessionAutoArchiveEnabled',
+      'sessionAutoUnarchiveOnPrompt',
+      'sessionRetentionExcludePinned',
+      'sessionAutoDeleteArchivedEnabled',
+    ]) {
+      const parsed = retentionBoolean.safeParse(candidate[key]);
+      if (parsed.success) {
+        result[key] = parsed.data;
+      }
     }
-    if (typeof candidate.autoDeleteAfterDays === 'number' && Number.isFinite(candidate.autoDeleteAfterDays)) {
-      const normalizedDays = Math.max(1, Math.min(365, Math.round(candidate.autoDeleteAfterDays)));
-      result.autoDeleteAfterDays = normalizedDays;
-    }
-    if (candidate.sessionRetentionAction === 'archive' || candidate.sessionRetentionAction === 'delete') {
-      result.sessionRetentionAction = candidate.sessionRetentionAction;
-    }
-    if (typeof candidate.sessionRetentionOnlyArchived === 'boolean') {
-      result.sessionRetentionOnlyArchived = candidate.sessionRetentionOnlyArchived;
+    for (const key of ['sessionAutoArchiveAfterDays', 'sessionAutoDeleteArchivedAfterDays']) {
+      const parsed = retentionDays.safeParse(candidate[key]);
+      if (parsed.success) {
+        result[key] = parsed.data;
+      }
     }
     if (candidate.tunnelBootstrapTtlMs === null) {
       result.tunnelBootstrapTtlMs = null;

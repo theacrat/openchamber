@@ -87,6 +87,7 @@ and OpenChamber resolves the directory itself.
   JSON includes and token references stay inside the package. Each failed variant
   is reported separately so valid siblings remain available. No extension code runs.
 - `packages/web/server/lib/opencode/proxy.js`: OpenCode API/SSE forwarding and readiness-gate route registration.
+- Prompt, message, prompt_async, and command proxy requests call the session service's `restoreSessionForDelivery` before forwarding. The same operation serves queued delivery and service-owned sends. It resolves archive overrides before upstream `time.archived`, persists the restore watermark before clearing archive state, and rejects delivery on failed reads or writes. An explicit null override keeps an upstream-archived session restored. Legacy metadata migration preserves unrelated upstream fields and durably updates the legacy copy before the upstream write, so a failed migration cleanup cannot replay an older watermark after restart.
 - `packages/web/server/lib/opencode/session-runtime.js`: session status/attention/activity runtime for OpenCode SSE events.
 - `packages/web/server/lib/opencode/watcher.js`: global SSE watcher runtime for push/session event fanout.
 - `packages/web/server/lib/opencode/shared.js`: shared utilities for config, markdown, skills, and git helpers.

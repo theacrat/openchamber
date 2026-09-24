@@ -35,8 +35,8 @@ export const createVSCodeGitHubAPI = (): GitHubAPI => ({
   },
   me: async () => sendBridgeMessage<GitHubUserSummary>('api:github/me'),
 
-  prStatus: async (directory: string, branch: string) =>
-    sendBridgeMessage<GitHubPullRequestStatus>('api:github/pr:status', { directory, branch }),
+  prStatus: async (directory: string, branch: string, remote?: string, options?: { force?: boolean }) =>
+    sendBridgeMessage<GitHubPullRequestStatus>('api:github/pr:status', { directory, branch, remote, force: options?.force }),
   prCreate: async (payload: GitHubPullRequestCreateInput) =>
     sendBridgeMessage<GitHubPullRequest>('api:github/pr:create', payload),
   prUpdate: async (payload: GitHubPullRequestUpdateInput) =>

@@ -17,6 +17,7 @@ import {
   parseSettingsDocument,
   readAutoSaveSnapshot,
 } from './registry';
+import { migrateLegacyRetentionState } from '@/stores/useUIStore';
 import { renderSettingsRegistrySnapshot, SETTINGS_REGISTRY_SNAPSHOT_PATHS } from './registry-snapshot';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
@@ -123,14 +124,12 @@ describe('settings registry', () => {
       queueModeEnabled: false,
       gitProviderId: 'anthropic',
       markdownDisplayMode: 'x',
-      autoDeleteAfterDays: 900,
       sttProvider: 'server',
     });
     expect(parsed).toEqual({
       fontSize: 15,
       followUpBehavior: 'steer',
       queueModeEnabled: false,
-      autoDeleteAfterDays: 365,
       sttProvider: 'openai-compatible',
     });
     expect(parseSettingsDocument(null)).toBeNull();
@@ -145,29 +144,22 @@ describe('settings registry', () => {
     expect(useUIStore.getState().terminalShell).toBe('fish');
   });
 
-  test('persists archived-only retention as an opt-in boolean and enforces its delete action', () => {
-    expect(useUIStore.getInitialState().sessionRetentionOnlyArchived).toBe(false);
-    expect(parseSettingsDocument({ sessionRetentionOnlyArchived: true })).toEqual({ sessionRetentionOnlyArchived: true });
-    expect(parseSettingsDocument({ sessionRetentionOnlyArchived: false })).toEqual({ sessionRetentionOnlyArchived: false });
-    expect(parseSettingsDocument({ sessionRetentionOnlyArchived: 'true' })).toEqual({});
-    expect(AUTO_SAVE_KEYS).toContain('sessionRetentionOnlyArchived');
-    expect(MIRRORED_KEYS).toContain('sessionRetentionOnlyArchived');
+  test('migrates legacy retention state without broadening deletion', () => {
+    const archive = { autoDeleteEnabled: true, autoDeleteAfterDays: 14 };
+    migrateLegacyRetentionState(archive);
+    expect(archive).toMatchObject({ sessionAutoArchiveEnabled: true, sessionAutoArchiveAfterDays: 14 });
+    expect(archive.autoDeleteEnabled).toBeUndefined();
 
-    applySettingsToStores({ sessionRetentionOnlyArchived: false, sessionRetentionAction: 'archive' });
-    useUIStore.getState().setSessionRetentionOnlyArchived(true);
-    expect(useUIStore.getState().sessionRetentionAction).toBe('delete');
-    useUIStore.getState().setSessionRetentionAction('archive');
-    expect(useUIStore.getState().sessionRetentionAction).toBe('delete');
-    expect(readAutoSaveSnapshot().sessionRetentionOnlyArchived).toBe(true);
-    expect(readAutoSaveSnapshot().sessionRetentionAction).toBe('delete');
+    const explicitFalse = {
+      autoDeleteEnabled: true, autoDeleteAfterDays: 14, sessionAutoArchiveEnabled: false,
+    };
+    migrateLegacyRetentionState(explicitFalse);
+    expect(explicitFalse.sessionAutoArchiveEnabled).toBe(false);
 
-    applySettingsToStores({ sessionRetentionOnlyArchived: true, sessionRetentionAction: 'archive' });
-    expect(useUIStore.getState().sessionRetentionAction).toBe('delete');
-    applySettingsToStores({ fontSize: 100 });
-    expect(useUIStore.getState().sessionRetentionOnlyArchived).toBe(true);
-    applySettingsToStores({ sessionRetentionOnlyArchived: false, sessionRetentionAction: 'archive' });
-    expect(useUIStore.getState().sessionRetentionOnlyArchived).toBe(false);
-    expect(useUIStore.getState().sessionRetentionAction).toBe('archive');
+    const activeDelete: Record<string, unknown> = { autoDeleteEnabled: true, autoDeleteAfterDays: 14, sessionRetentionAction: 'delete' };
+    migrateLegacyRetentionState(activeDelete);
+    expect(activeDelete.sessionAutoArchiveEnabled).toBeUndefined();
+    expect(activeDelete.sessionAutoDeleteArchivedEnabled).toBeUndefined();
   });
 
   test('applies the hidden-sections list together with its explicit marker', () => {

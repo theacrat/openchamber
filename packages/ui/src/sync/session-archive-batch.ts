@@ -10,9 +10,8 @@
  * OpenCode 2.x has no HTTP route that sets `time.archived` or rewrites a
  * session's metadata after creation, so OpenChamber keeps both itself, next to
  * OpenCode, per data directory. These routes are an OpenChamber capability, not
- * an OpenCode one. Runtimes that do not serve them (the VS Code webview has no
- * server process) answer with a stable unsupported status, and callers fall
- * back to a per-session path or report failure.
+ * an OpenCode one. The VS Code webview serves them through its extension-host
+ * bridge.
  */
 
 import type { JsonValue, Metadata } from "@/lib/opencode/model"

@@ -116,7 +116,12 @@ persisted "sending" flag would strand a message forever.
    result back. While `../opencode/session-activity.js` finds a running child
    the head waits (the rerun's idle event re-arms it, a 5 s recheck covers a
    missed one); a failed check is unknown and backs off like the rest.
-5. The head is marked in flight (broadcast), then sent. The captured model and
+5. The head is marked in flight (broadcast), then the session service applies
+   restore-on-prompt before any delivery writes. Archive overrides take precedence
+   over upstream `time.archived`, including an explicit null. The service persists
+   the restore watermark before clearing archive state. Failed reads or writes
+   retain the queued item for retry; a disabled policy performs no restore reads.
+   The captured model and
    agent are switched onto the session first (`POST /session/:id/model`,
    `/agent`), because v2 holds both on the session rather than in the body; a
    captured `openchamber/auto` is resolved into a real pair by the routing

@@ -983,6 +983,9 @@ notificationTriggerRuntime.setGetIsSessionAutoAccepting(
   (sessionId, directory) => permissionAutoAcceptRuntime.isSessionAutoAccepting(sessionId, directory),
 );
 
+const restoreSessionForDelivery = (sessionId, directory) =>
+  openChamberSessionService.restoreSessionForDelivery(sessionId, directory);
+
 // Queued follow-up messages are delivered by the server so a closed tab or a
 // dropped connection no longer strands them (VS Code keeps its UI-side queue).
 const messageQueueRuntime = createMessageQueueRuntime({
@@ -994,6 +997,7 @@ const messageQueueRuntime = createMessageQueueRuntime({
   // shared control stream for SSE clients and the existing WS fan-out.
   broadcastGlobalUiEvent: broadcastOpenChamberUiEvent,
   resolveAutoSelection: (send) => routingRuntime.resolveAutoSelection(send),
+  restoreSessionForDelivery,
   onPromptSent: (sessionId) => sessionRuntime.markUserMessageSent(sessionId),
   dataDir: OPENCHAMBER_DATA_DIR,
 });
@@ -1105,6 +1109,7 @@ const serverUtilsRuntime = createServerUtilsRuntime({
   // down, while the proxy is registered later still.
   getArchivedSessions: () => openChamberSessionService.archiveStore.getAll(),
   getStoredSessionMetadata: () => sessionMetadataStore.listUnmigrated(),
+  restoreSessionForDelivery,
   fs,
   os,
   path,

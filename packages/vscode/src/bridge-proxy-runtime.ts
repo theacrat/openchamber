@@ -64,9 +64,26 @@ type ProxyRuntimeDeps = {
   sanitizeForwardHeaders: (input: Record<string, string> | undefined) => Record<string, string>;
   collectHeaders: (headers: Headers) => Record<string, string>;
   base64EncodeUtf8: (text: string) => string;
+  restoreArchivedSession?: (sessionId: string) => Promise<boolean>;
+  shouldRestoreArchivedSession?: () => Promise<boolean>;
 };
 
 const proxyAbortControllers = new Map<string, AbortController>();
+
+/** Restore only archived prompt or command targets before forwarding their original body. */
+const restoreDeliveryTarget = async (method: string, requestPath: string, deps: ProxyRuntimeDeps): Promise<boolean> => {
+  const match = /^\/api\/session\/([^/]+)\/(?:prompt|command)(?:\?.*)?$/.exec(requestPath);
+  if (method !== 'POST' || !match || !deps.restoreArchivedSession || !deps.shouldRestoreArchivedSession
+    || !await deps.shouldRestoreArchivedSession()) return true;
+  const sessionId = decodeURIComponent(match[1]);
+  return deps.restoreArchivedSession(sessionId);
+};
+
+const restoreFailureResponse = (): ApiProxyResponsePayload => ({
+  status: 409,
+  headers: { 'content-type': 'application/json' },
+  bodyText: JSON.stringify({ error: 'Unable to restore archived session before delivery' }),
+});
 
 // ---------------------------------------------------------------------------
 // In-flight read coalescing (parity with the web runtimeFetch coalescer)
@@ -249,6 +266,9 @@ export async function handleProxyBridgeMessage(
       proxyAbortControllers.set(id, abortController);
 
       try {
+        if (!await restoreDeliveryTarget(normalizedMethod, normalizedPath, deps)) {
+          return { id, type, success: true, data: restoreFailureResponse() };
+        }
         const data = await overlayOwnedSessionState(
           normalizedMethod,
           normalizedPath,
@@ -284,6 +304,10 @@ export async function handleProxyBridgeMessage(
           bodyBase64: deps.base64EncodeUtf8(body),
         };
         return { id, type, success: true, data };
+      }
+
+      if (!await restoreDeliveryTarget('POST', normalizedPath, deps)) {
+        return { id, type, success: true, data: restoreFailureResponse() };
       }
 
       const base = `${apiUrl.replace(/\/+$/, '')}/`;

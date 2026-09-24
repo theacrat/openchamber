@@ -34,6 +34,7 @@ import { withLinkedIssue, type LinkedIssue } from "@/lib/linkedIssues"
 import { getImperativeSessionMessageLoader } from "./session-message-loader"
 import { cleanupPersistedSessionState } from "./session-deletion-cleanup"
 import { requestSessionArchiveBatch, requestSessionMetadataUpdate, requestSessionUnarchiveBatch, type SessionArchiveStamp } from "./session-archive-batch"
+import { markSessionRestored } from './session-retention-state'
 import { registerBulkArchiveEchoes, releaseBulkArchiveEchoes } from "./bulk-archive-echo"
 import { getRuntimeKey } from "@/lib/runtime-switch"
 import { getErrorStatus, isAmbiguousSendFailure } from "./send-failure-classification"
@@ -1045,6 +1046,7 @@ async function cleanupReviewMetadataBeforeDelete(
   sessionId: string,
   directory?: string | null,
   expectedRuntimeKey?: string,
+  beforeMutation?: () => boolean,
 ): Promise<void> {
   if (isStaleRuntime(expectedRuntimeKey)) return
   let session: Session
@@ -1085,7 +1087,8 @@ async function cleanupReviewMetadataBeforeDelete(
   if (btwSessionID) {
     try {
       if (isStaleRuntime(expectedRuntimeKey)) return
-      await deleteSession(btwSessionID, { expectedRuntimeKey })
+      if (beforeMutation && !beforeMutation()) return
+      await deleteSession(btwSessionID, { expectedRuntimeKey, beforeMutation })
     } catch (error) {
       console.warn("[session-actions] failed to delete btw fork before parent delete", error)
     }
@@ -1257,6 +1260,7 @@ export type DeleteSessionOptions = {
    * confirmation spans a runtime switch.
    */
   expectedRuntimeKey?: string
+  beforeMutation?: () => boolean
 }
 
 /**
@@ -1280,8 +1284,9 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
   const sessionDirectory = getSessionDirectory(sessionId)
   const chatDirectoryCleanup = planChatDirectoryCleanup(sessionId, getGlobalSessionSnapshot(sessionId), sessionDirectory)
   try {
-    await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey)
+    await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey, options?.beforeMutation)
     if (isStaleRuntime(expectedRuntimeKey)) return false
+    if (options?.beforeMutation && !options.beforeMutation()) return false
     const deleted = await opencodeClient.deleteSession(sessionId, sessionDirectory)
     if (isStaleRuntime(expectedRuntimeKey)) return false
     if (deleted !== true) {
@@ -1386,13 +1391,18 @@ export async function deleteSessions(
  * stays archived on that runtime and is re-read from the server the next time
  * the runtime is loaded.
  */
-export async function archiveSession(sessionId: string, expectedRuntimeKey = getRuntimeKey()): Promise<boolean> {
+export async function archiveSession(
+  sessionId: string,
+  expectedRuntimeKey = getRuntimeKey(),
+  beforeMutation?: () => boolean,
+): Promise<boolean> {
   if (isStaleRuntime(expectedRuntimeKey)) return false
   const sessionDirectory = getSessionDirectory(sessionId)
   const archivedAt = Date.now()
   try {
     await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey)
     if (isStaleRuntime(expectedRuntimeKey)) return false
+    if (beforeMutation && !beforeMutation()) return false
     if (!sessionDirectory) throw new Error("archive failed: session directory is unknown")
     const result = await requestSessionArchiveBatch(sessionDirectory, [sessionId], archivedAt)
     if (isStaleRuntime(expectedRuntimeKey)) return false
@@ -1602,6 +1612,10 @@ export async function unarchiveSession(sessionId: string, expectedRuntimeKey = g
     if (!result.restored.includes(sessionId)) {
       throw new Error("unarchive failed: server did not return the restored session")
     }
+    // The runtime owns the restore transaction. It persists the watermark
+    // before clearing archive state, so this action only records the
+    // confirmed transition locally.
+    markSessionRestored(sessionId)
     const restored = withArchivedAt(sessionId, null)
     if (restored) useGlobalSessionsStore.getState().upsertSession(restored)
     if (sessionDirectory) registerSessionDirectory(sessionId, sessionDirectory)

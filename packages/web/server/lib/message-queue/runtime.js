@@ -230,6 +230,7 @@ export function createMessageQueueRuntime({
   // Resolves the `openchamber/auto` sentinel into a real model and agent right
   // before the send; absent means the queue never sees the sentinel.
   resolveAutoSelection = null,
+  restoreSessionForDelivery = null,
   dataDir,
   fetchImpl = fetch,
   now = Date.now,
@@ -481,6 +482,7 @@ export function createMessageQueueRuntime({
   };
 
   const sendItem = async (sessionId, directory, item) => {
+    await restoreSessionForDelivery?.(sessionId, directory);
     const { providerID, modelID, variant } = item.sendConfig;
     let agent = item.sendConfig.agent;
     let model = { id: modelID, providerID, ...(variant ? { variant } : {}) };

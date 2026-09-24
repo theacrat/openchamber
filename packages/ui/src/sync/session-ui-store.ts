@@ -1823,6 +1823,16 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
 
     // ---- Existing session ----
     const targetSessionId = capturedTarget?.sessionId ?? options?.sessionId ?? get().currentSessionId
+    if (targetSessionId && useUIStore.getState().sessionAutoUnarchiveOnPrompt) {
+      const archived = useGlobalSessionsStore.getState().entityById.get(targetSessionId)
+      if (archived?.time?.archived) {
+        const restored = await unarchiveSessionAction(targetSessionId, capturedRuntimeKey)
+        if (capturedRuntimeKey !== getRuntimeKey()) {
+          throw new Error("Message was not sent because the runtime changed.")
+        }
+        if (!restored) throw new Error('Unable to restore archived session before sending')
+      }
+    }
     const sessionAgentSelection = targetSessionId
       ? useSelectionStore.getState().getSessionAgentSelection(targetSessionId)
       : null
@@ -1903,7 +1913,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
       : undefined
 
     const messageRoute = await routeMessage({
-      runtimeKey: capturedTarget?.runtimeKey,
+      runtimeKey: capturedRuntimeKey,
       sessionId: targetSessionId || "",
       directory: currentSessionDirectory,
       content,

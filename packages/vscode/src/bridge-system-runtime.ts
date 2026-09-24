@@ -19,7 +19,7 @@ import type { BridgeContext, BridgeResponse } from './bridge';
 const isSessionNotFound = (error: Error): boolean => error.name === 'SessionNotFoundError';
 
 /** Session metadata on the OpenCode instance this window manages. */
-const sessionMetadataOnOpenCode = (manager: OpenCodeManager | undefined): SessionMetadataOnOpenCode => {
+export const sessionMetadataOnOpenCode = (manager: OpenCodeManager | undefined): SessionMetadataOnOpenCode => {
   const apiUrl = manager?.getApiUrl();
   if (!manager || !apiUrl) throw new Error('OpenCode is not available');
   const client = OpenCode.make({ baseUrl: apiUrl.replace(/\/+$/, ''), headers: manager.getOpenCodeAuthHeaders() });
@@ -29,6 +29,14 @@ const sessionMetadataOnOpenCode = (manager: OpenCodeManager | undefined): Sessio
         const session = await client.session.get({ sessionID });
         // Round-trip through JSON: the wire type is opaque JSON, the store's is `JsonValue`.
         return asSessionMetadata(parseJson(JSON.stringify(session.metadata ?? {})) ?? undefined) ?? {};
+      } catch (error) {
+        if (error instanceof Error && isSessionNotFound(error)) return null;
+        throw error;
+      }
+    },
+    readSession: async (sessionID) => {
+      try {
+        return await client.session.get({ sessionID });
       } catch (error) {
         if (error instanceof Error && isSessionNotFound(error)) return null;
         throw error;
@@ -468,7 +476,7 @@ export async function handleSystemBridgeMessage(
       const { ids } = (payload || {}) as { ids?: JsonValue };
       const targets = asSessionIdList(ids);
       if (targets.length === 0) return { id, type, success: false, error: 'ids must be a non-empty array of session ids' };
-      return { id, type, success: true, data: await deps.sessionState.unarchive(targets) };
+      return { id, type, success: true, data: await deps.sessionState.unarchive(targets, sessionMetadataOnOpenCode(ctx?.manager)) };
     }
 
     case 'api:sessions/metadata:get': {

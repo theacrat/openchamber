@@ -307,6 +307,7 @@ export const registerOpenCodeProxy = (app, deps) => {
     // migrated.
     getArchivedSessions = null,
     getStoredSessionMetadata = null,
+    restoreSessionForDelivery = null,
   } = deps;
 
   /**
@@ -948,6 +949,21 @@ export const registerOpenCodeProxy = (app, deps) => {
     return forwardSseRequest(req, res, next);
   });
   app.get('/api/event', forwardSseRequest);
+
+  app.post(['/api/session/:sessionID/prompt', '/api/session/:sessionID/message', '/api/session/:sessionID/prompt_async', '/api/session/:sessionID/command'], async (req, res, next) => {
+    if (!restoreSessionForDelivery) return next();
+    try {
+      const headers = normalizeForwardedDirectoryHeaders({
+        'x-opencode-directory': req.get('x-opencode-directory'),
+        'x-opencode-directory-encoding': req.get('x-opencode-directory-encoding'),
+      });
+      const directory = headers['x-opencode-directory'] || new URL(req.originalUrl, 'http://localhost').searchParams.get('directory') || '';
+      await restoreSessionForDelivery(req.params.sessionID, directory);
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  });
 
   // Generic proxy for non-SSE OpenCode API routes.
   // The agent is exposed as a getter so its class is resolved per request, not

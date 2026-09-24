@@ -24,6 +24,19 @@
 - **Two files on the instance.** `settings.json` keeps instance facts and legacy keys; `preferences.json` beside it holds every `profile` key as `{ value, updatedAt }` (`version: 1`). The server (`packages/web/server/lib/opencode/settings-files.js`) and the VS Code bridge (`packages/vscode/src/settings-files.ts`) seed `preferences.json` once from an existing `settings.json`, keep a copy of the profile's base values in `settings.json` on every write (a build from before the split reads only that file, so a rollback keeps the user's preferences; current builds ignore the copy because `preferences.json` wins), and never touch a `preferences.json` they cannot parse; clients see one merged document and never address the files. Server modules that read a profile key off the disk (small model, session goal/assist, walkthrough) use `readMergedSettingsSync`.
 - **Markers, not code, carry the special cases.** `adopt: 'bootstrap-only'` (workspace pointers), `derived` (computed by the writer from other fields), `secret` (accepted on write, never returned), `computed` (server-emitted, never persisted), `surfaces` (which surface kinds have the field).
 
+### Retention replacement migration
+
+The old `autoDeleteEnabled`, `autoDeleteAfterDays`, `sessionRetentionAction`, and
+`sessionRetentionOnlyArchived` fields are removed from the registry. During the
+v22 UI-store migration and server settings migration, compatible intent maps as
+follows. An enabled old archive policy maps to `sessionAutoArchiveEnabled` and
+`sessionAutoArchiveAfterDays`. An enabled archived-only policy maps to
+`sessionAutoDeleteArchivedEnabled` and `sessionAutoDeleteArchivedAfterDays`.
+When the old action is missing, migration uses its old default of archive for
+the active-session scope. Old active-session deletion has no safe equivalent,
+so it is discarded without enabling deletion. Existing new fields always win.
+The migration deletes all legacy fields and is idempotent.
+
 ## Adding a setting
 
 1. Add one entry to `SETTINGS_REGISTRY` with `scope`, a parser from `parsers.ts`, and a `ui` binding when a store holds the live value. Use an existing setter so its side effects run.
