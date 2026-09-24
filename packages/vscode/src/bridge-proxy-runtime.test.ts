@@ -32,6 +32,62 @@ const asBridgeContext = (manager: typeof connectedManager): BridgeContext => ({ 
 
 const ctx = asBridgeContext(connectedManager);
 
+describe('archived delivery targets', () => {
+  for (const route of ['prompt', 'command']) {
+    test(`generic ${route} restores archived targets and preserves the body`, async () => {
+      const originalFetch = globalThis.fetch;
+      const calls: string[] = [];
+      const body = JSON.stringify({ text: 'continue', name: 'review' });
+      try {
+        globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+          calls.push('send');
+          assert.equal(Buffer.from(init?.body as Uint8Array).toString(), body);
+          return new Response('{}', { headers: { 'content-type': 'application/json' } });
+        }) as typeof fetch;
+        await handleProxyBridgeMessage({ id: route, type: 'api:proxy', payload: {
+          method: 'POST', path: `/api/session/abc/${route}`, bodyBase64: Buffer.from(body).toString('base64'),
+        } }, ctx, {
+          ...deps,
+          sessionState: { readArchived: async () => ({ abc: 10 }), readMetadata: async () => ({}) },
+          shouldRestoreArchivedSession: async () => true,
+          restoreArchivedSession: async (id) => { assert.equal(id, 'abc'); calls.push('restore'); return true; },
+        });
+        assert.deepEqual(calls, ['restore', 'send']);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  }
+
+  test('specialized prompts leave active sessions untouched and block failed restoration', async () => {
+    const originalFetch = globalThis.fetch;
+    let writes = 0;
+    let sends = 0;
+    try {
+      globalThis.fetch = (async () => {
+        sends += 1;
+        return new Response('{}', { headers: { 'content-type': 'application/json' } });
+      }) as typeof fetch;
+      for (const archived of [false, true]) {
+        const response = await handleProxyBridgeMessage({ id: 'prompt', type: 'api:session:message', payload: {
+          path: '/api/session/abc/prompt', bodyText: '{}',
+        } }, ctx, {
+          ...deps,
+          sessionState: { readArchived: async () => ({ abc: archived ? 10 : null }), readMetadata: async () => ({}) },
+          shouldRestoreArchivedSession: async () => true,
+          restoreArchivedSession: async () => { writes += 1; return false; },
+        });
+        assert.ok(response);
+        assert.match(JSON.stringify(response.data), archived ? /409/ : /200/);
+      }
+      assert.equal(writes, 1);
+      assert.equal(sends, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe('VS Code API proxy aborts', () => {
   test('aborts non-SSE api:proxy fetches by bridge request id', async () => {
     const originalFetch = globalThis.fetch;

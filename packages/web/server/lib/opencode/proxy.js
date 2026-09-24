@@ -951,12 +951,13 @@ export const registerOpenCodeProxy = (app, deps) => {
   });
   app.get('/api/event', forwardSseRequest);
 
-  app.post('/api/session/:sessionID/prompt', async (req, res, next) => {
+  app.post(['/api/session/:sessionID/prompt', '/api/session/:sessionID/command'], async (req, res, next) => {
     if (!readSettingsFromDiskMigrated || !unarchiveSession || typeof getArchivedSessions !== 'function') return next();
     try {
       const settings = await readSettingsFromDiskMigrated();
       if (settings?.sessionAutoUnarchiveOnPrompt === true) {
         const archived = await readArchivedSessions();
+        if (!archived) return res.status(503).json({ error: 'Session archive state is unavailable' });
         if (archived && typeof archived[req.params.sessionID] === 'number') {
           const restored = await unarchiveSession(req.params.sessionID);
           if (!restored) return res.status(409).json({ error: 'Unable to restore archived session before prompt' });

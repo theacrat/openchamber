@@ -154,10 +154,11 @@ describe('retention execution', () => {
       await loading;
       throw new Error('offline');
     });
+    load.mock.calls.length = 0;
     const first = runSessionRetentionCleanup({ force: true });
     expect(useSessionRetentionRunStore.getState().isRunning).toBe(true);
     expect((await runSessionRetentionCleanup({ force: true })).skippedReason).toBe('running');
-    expect(load.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(load.mock.calls).toHaveLength(1);
     finish();
     await expect(first).rejects.toThrow('offline');
     expect(useSessionRetentionRunStore.getState().isRunning).toBe(false);

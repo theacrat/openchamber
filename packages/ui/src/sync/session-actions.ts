@@ -34,6 +34,7 @@ import { withLinkedIssue, type LinkedIssue } from "@/lib/linkedIssues"
 import { getImperativeSessionMessageLoader } from "./session-message-loader"
 import { cleanupPersistedSessionState } from "./session-deletion-cleanup"
 import { requestSessionArchiveBatch, requestSessionMetadataUpdate, requestSessionUnarchiveBatch, type SessionArchiveStamp } from "./session-archive-batch"
+import { markSessionRestored } from './session-retention-state'
 import { registerBulkArchiveEchoes, releaseBulkArchiveEchoes } from "./bulk-archive-echo"
 import { getRuntimeKey } from "@/lib/runtime-switch"
 import { getErrorStatus, isAmbiguousSendFailure } from "./send-failure-classification"
@@ -1605,6 +1606,7 @@ export async function unarchiveSession(sessionId: string, expectedRuntimeKey = g
     if (!result.restored.includes(sessionId)) {
       throw new Error("unarchive failed: server did not return the restored session")
     }
+    markSessionRestored(sessionId)
     const restored = withArchivedAt(sessionId, null)
     if (restored) useGlobalSessionsStore.getState().upsertSession(restored)
     if (sessionDirectory) registerSessionDirectory(sessionId, sessionDirectory)

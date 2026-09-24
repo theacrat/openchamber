@@ -70,6 +70,24 @@ type ProxyRuntimeDeps = {
 
 const proxyAbortControllers = new Map<string, AbortController>();
 
+/** Restore only archived prompt or command targets before forwarding their original body. */
+const restoreDeliveryTarget = async (method: string, requestPath: string, deps: ProxyRuntimeDeps): Promise<boolean> => {
+  const match = /^\/api\/session\/([^/]+)\/(?:prompt|command)(?:\?.*)?$/.exec(requestPath);
+  if (method !== 'POST' || !match || !deps.restoreArchivedSession || !deps.shouldRestoreArchivedSession
+    || !await deps.shouldRestoreArchivedSession()) return true;
+  const archived = await deps.sessionState?.readArchived();
+  if (!archived) throw new Error('Session archive state is unavailable');
+  const sessionId = decodeURIComponent(match[1]);
+  if (!archived[sessionId]) return true;
+  return deps.restoreArchivedSession(sessionId);
+};
+
+const restoreFailureResponse = (): ApiProxyResponsePayload => ({
+  status: 409,
+  headers: { 'content-type': 'application/json' },
+  bodyText: JSON.stringify({ error: 'Unable to restore archived session before delivery' }),
+});
+
 // ---------------------------------------------------------------------------
 // In-flight read coalescing (parity with the web runtimeFetch coalescer)
 //
@@ -251,6 +269,9 @@ export async function handleProxyBridgeMessage(
       proxyAbortControllers.set(id, abortController);
 
       try {
+        if (!await restoreDeliveryTarget(normalizedMethod, normalizedPath, deps)) {
+          return { id, type, success: true, data: restoreFailureResponse() };
+        }
         const data = await overlayOwnedSessionState(
           normalizedMethod,
           normalizedPath,
@@ -288,14 +309,8 @@ export async function handleProxyBridgeMessage(
         return { id, type, success: true, data };
       }
 
-      const sessionId = /^\/api\/session\/([^/]+)\/prompt/.exec(normalizedPath)?.[1];
-      if (sessionId && deps.restoreArchivedSession && deps.shouldRestoreArchivedSession
-        && await deps.shouldRestoreArchivedSession()) {
-        const restored = await deps.restoreArchivedSession(sessionId);
-        if (!restored) {
-          const body = JSON.stringify({ error: 'Unable to restore archived session before prompt' });
-          return { id, type, success: true, data: { status: 409, headers: { 'content-type': 'application/json' }, bodyText: body } };
-        }
+      if (!await restoreDeliveryTarget('POST', normalizedPath, deps)) {
+        return { id, type, success: true, data: restoreFailureResponse() };
       }
 
       const base = `${apiUrl.replace(/\/+$/, '')}/`;

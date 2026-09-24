@@ -63,6 +63,8 @@ export const createVSCodeGitHubAPI = (): GitHubAPI => ({
       includeCheckDetails: Boolean(options?.includeCheckDetails),
       sourceRepo: options?.sourceRepo ?? null,
     }),
+  prMergeState: async (directory: string, number: number, sourceRepo?: { owner: string; repo: string } | null) =>
+    sendBridgeMessage('api:github/pr:merge-state', { directory, number, sourceRepo: sourceRepo ?? null }),
 
   repoUpstream: async (directory: string) =>
     sendBridgeMessage<GitHubRepoUpstreamResult>('api:github/repo:upstream', { directory }),

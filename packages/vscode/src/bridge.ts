@@ -184,6 +184,7 @@ export async function handleBridgeMessage(message: BridgeRequest, ctx?: BridgeCo
       case 'api:github/issues:comments':
       case 'api:github/pulls:list':
       case 'api:github/pulls:context':
+      case 'api:github/pr:merge-state':
       case 'api:github/repo:upstream':
       case 'api:github/repo:branches': {
         return { id, type, success: false, error: GITHUB_BACKEND_DISABLED_ERROR };
