@@ -8,7 +8,7 @@ import { resolveGlobalSessionDirectory } from '@/stores/useGlobalSessionsStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from './session-ui-store';
 import { replaceGlobalSessionStatusById } from './global-session-status';
-import { buildSessionRetentionCandidates, runAutomaticSessionRetention, useSessionRetentionRunStore } from './session-retention';
+import { buildSessionRetentionCandidates, deleteAllArchivedSessions, previewArchivedDeletion, runAutomaticSessionRetention, useSessionRetentionRunStore } from './session-retention';
 import { createMessageQueueTarget, useMessageQueueStore } from '@/stores/messageQueueStore';
 import { useSessionPinnedStore } from '@/stores/useSessionPinnedStore';
 import { getPinnedSessionKey } from '@/stores/useSessionPinnedStore';
@@ -367,4 +367,47 @@ describe('retention execution', () => {
     expect(archive.mock.calls).toHaveLength(0);
   });
 
+});
+
+describe('delete all archived sessions', () => {
+  test('deletes archived sessions without age or recent-session limits and preserves active descendants', async () => {
+    const old = archived('old-archived');
+    const recent = archived('recent-archived', { time: { created: now, updated: now, archived: now } });
+    const activeChild = session('active-child', { parentID: old.id });
+    seed([old, recent, activeChild]);
+    spyOn(opencodeClient, 'getActiveSessionStatuses').mockResolvedValue({ [activeChild.id]: { type: 'busy' } });
+    const remove = spyOn(opencodeClient, 'deleteSession').mockResolvedValue(true);
+    const preview = await previewArchivedDeletion();
+    expect(preview.kind).toBe('ready');
+    if (preview.kind !== 'ready') throw new Error('expected preview');
+    expect(preview.plan.targets.map((item) => item.id)).toEqual([recent.id]);
+    expect(preview.plan.protectedCount).toBe(1);
+    const result = await deleteAllArchivedSessions({ ...preview.plan, targets: [old] });
+    expect(result.deletedIds).toEqual([]);
+    expect(result.skippedIds).toEqual([old.id]);
+    expect(remove.mock.calls).toHaveLength(0);
+  });
+
+  test('reports discovery failure without deleting', async () => {
+    seed([archived('archived')]);
+    spyOn(opencodeClient, 'getActiveSessionStatuses').mockResolvedValue(null);
+    const remove = spyOn(opencodeClient, 'deleteSession');
+    const preview = await previewArchivedDeletion();
+    expect(preview).toEqual({ kind: 'failure' });
+    expect(remove.mock.calls).toHaveLength(0);
+  });
+
+  test('keeps unrelated archived sessions after one deletion fails', async () => {
+    const first = archived('first');
+    const second = archived('second');
+    seed([first, second]);
+    spyOn(opencodeClient, 'getActiveSessionStatuses').mockResolvedValue({});
+    const remove = spyOn(opencodeClient, 'deleteSession').mockImplementation(async (id) => id === second.id);
+    const preview = await previewArchivedDeletion();
+    if (preview.kind !== 'ready') throw new Error('expected preview');
+    const result = await deleteAllArchivedSessions(preview.plan);
+    expect(result.deletedIds).toEqual([second.id]);
+    expect(result.failedIds).toEqual([first.id]);
+    expect(remove.mock.calls.map(([id]) => id)).toEqual([first.id, second.id]);
+  });
 });

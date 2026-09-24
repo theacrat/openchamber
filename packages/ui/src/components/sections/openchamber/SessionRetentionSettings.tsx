@@ -1,5 +1,7 @@
 import React from 'react';
 import { NumberInput } from '@/components/ui/number-input';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   SettingsSection,
   SettingsFieldRow,
@@ -10,10 +12,15 @@ import {
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionAutoCleanup } from '@/hooks/useSessionAutoCleanup';
+import { deleteAllArchivedSessions, previewArchivedDeletion, useSessionRetentionRunStore, type ArchivedDeletionPlan, type DeleteAllArchivedResult } from '@/sync/session-retention';
 import { useI18n } from '@/lib/i18n';
 
 const MIN_DAYS = 1;
 const MAX_DAYS = 365;
+type DeletionDialog =
+  | { kind: 'closed' | 'loading' | 'error' | 'running' }
+  | { kind: 'ready'; plan: ArchivedDeletionPlan }
+  | { kind: 'result'; result: DeleteAllArchivedResult; plan: ArchivedDeletionPlan };
 export const SessionRetentionSettings: React.FC = () => {
   const { t } = useI18n();
   const autoArchiveEnabled = useUIStore((state) => state.sessionAutoArchiveEnabled);
@@ -30,7 +37,30 @@ export const SessionRetentionSettings: React.FC = () => {
   const setExcludePinned = useUIStore((state) => state.setSessionRetentionExcludePinned);
   const setAutoDeleteArchivedEnabled = useUIStore((state) => state.setSessionAutoDeleteArchivedEnabled);
   const setAutoDeleteArchivedAfterDays = useUIStore((state) => state.setSessionAutoDeleteArchivedAfterDays);
-
+  const [dialog, setDialog] = React.useState<DeletionDialog>({ kind: 'closed' });
+  const isRunning = useSessionRetentionRunStore((state) => state.isRunning);
+  const request = React.useRef(0);
+  React.useEffect(() => () => { request.current += 1; }, []);
+  const openDeleteAll = async () => {
+    const revision = ++request.current;
+    setDialog({ kind: 'loading' });
+    const preview = await previewArchivedDeletion();
+    if (request.current !== revision) return;
+    setDialog(preview.kind === 'ready' ? { kind: 'ready', plan: preview.plan } : { kind: 'error' });
+  };
+  const runDeleteAll = async () => {
+    if (dialog.kind !== 'ready') return;
+    const plan = dialog.plan;
+    setDialog({ kind: 'running' });
+    const revision = ++request.current;
+    const result = await deleteAllArchivedSessions(plan);
+    if (request.current === revision) setDialog({ kind: 'result', result, plan });
+  };
+  const closeDeleteAll = () => {
+    if (dialog.kind === 'running') return;
+    request.current += 1;
+    setDialog({ kind: 'closed' });
+  };
   useSessionAutoCleanup();
 
   return (
@@ -66,7 +96,40 @@ export const SessionRetentionSettings: React.FC = () => {
             <span className="typography-ui-label text-muted-foreground">{t('settings.openchamber.sessionRetention.field.days')}</span>
           </SettingsFieldRow>
         </div>
+        <SettingsFieldRow
+          settingsItem="sessions.delete-all-archived"
+          label={t('settings.openchamber.sessionRetention.deleteAll.title')}
+          info={t('settings.openchamber.sessionRetention.deleteAll.exclusions')}
+        >
+          <Button type="button" size="sm" variant="destructive" disabled={isRunning} onClick={() => void openDeleteAll()}>
+            {t('settings.common.actions.delete')}
+          </Button>
+        </SettingsFieldRow>
       </div>
+      <Dialog open={dialog.kind !== 'closed'} onOpenChange={(open) => { if (!open) closeDeleteAll(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('settings.openchamber.sessionRetention.deleteAll.title')}</DialogTitle>
+            <DialogDescription>
+              {dialog.kind === 'loading' || dialog.kind === 'running'
+                ? t('settings.openchamber.sessionRetention.deleteAll.working')
+                : dialog.kind === 'ready'
+                  ? t('settings.openchamber.sessionRetention.deleteAll.confirm', { count: dialog.plan.targets.length, protected: dialog.plan.protectedCount })
+                  : dialog.kind === 'result'
+                    ? t('settings.openchamber.sessionRetention.deleteAll.result', { deleted: dialog.result.deletedIds.length,
+                      remaining: dialog.plan.targets.length - dialog.result.deletedIds.length,
+                      failed: dialog.result.failedIds.length })
+                    : t('settings.openchamber.sessionRetention.deleteAll.error')}
+            </DialogDescription>
+            <DialogDescription>{t('settings.openchamber.sessionRetention.deleteAll.exclusions')}</DialogDescription>
+            {dialog.kind === 'result' && dialog.result.kind !== 'complete' ? <DialogDescription>{t('settings.openchamber.sessionRetention.deleteAll.error')}</DialogDescription> : null}
+          </DialogHeader>
+          <DialogFooter>
+            <Button size="sm" variant="ghost" disabled={dialog.kind === 'running'} onClick={closeDeleteAll}>{t('settings.common.actions.cancel')}</Button>
+            {dialog.kind === 'ready' ? <Button size="sm" variant="destructive" disabled={isRunning || dialog.plan.targets.length === 0} onClick={() => void runDeleteAll()}>{t('settings.common.actions.delete')}</Button> : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SettingsSection>
   );
 };
