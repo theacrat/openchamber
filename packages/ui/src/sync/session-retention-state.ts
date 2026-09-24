@@ -1,20 +1,20 @@
+import { z } from 'zod';
+import type { Session } from '@/lib/opencode/model';
+import { getRuntimeKey } from '@/lib/runtime-switch';
+
 const restoredAtBySession = new Map<string, number>();
+const restoreKey = (sessionId: string): string => JSON.stringify([getRuntimeKey(), sessionId]);
+const restoreMetadata = z.object({
+  openchamber: z.object({ sessionRetentionRestoredAt: z.number().finite().nonnegative() }),
+});
 
 export const markSessionRestored = (sessionId: string, restoredAt = Date.now()): void => {
-  restoredAtBySession.set(sessionId, restoredAt);
+  restoredAtBySession.set(restoreKey(sessionId), restoredAt);
 };
 
-export const getSessionRestoredAt = (sessionId: string): number => restoredAtBySession.get(sessionId) ?? 0;
+export const getSessionRestoredAt = (sessionId: string): number => restoredAtBySession.get(restoreKey(sessionId)) ?? 0;
 
-export const getPersistedSessionRestoredAt = (session: { metadata?: unknown }): number => {
-  const metadata = session.metadata;
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return 0;
-  const openchamber = (metadata as { openchamber?: unknown }).openchamber;
-  if (!openchamber || typeof openchamber !== 'object' || Array.isArray(openchamber)) return 0;
-  const restoredAt = (openchamber as { sessionRetentionRestoredAt?: unknown }).sessionRetentionRestoredAt;
-  return typeof restoredAt === 'number' && Number.isFinite(restoredAt) ? restoredAt : 0;
-};
-
-export const recordDeliveryRestoredAt = (sessionId: string, restoredAt = Date.now()): void => {
-  markSessionRestored(sessionId, restoredAt);
+export const getPersistedSessionRestoredAt = (session: Pick<Session, 'metadata'>): number => {
+  const parsed = restoreMetadata.safeParse(session.metadata);
+  return parsed.success ? parsed.data.openchamber.sessionRetentionRestoredAt : 0;
 };

@@ -965,7 +965,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': 'Automatische Prüfungen laufen, solange OpenChamber geöffnet ist.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Inaktive Sitzungen automatisch archivieren',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Alter inaktiver Sitzungen',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Sitzungen archivieren, wenn verknüpfte Pull Requests zusammengeführt werden',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Sitzungen archivieren, wenn der Pull Request ihres Branches zusammengeführt wird',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': 'Archivierte Sitzungen bei einer Aufforderung wiederherstellen',
   'settings.openchamber.sessionRetention.field.excludePinned': 'Angeheftete Sitzungen behalten',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': 'Archivierte Sitzungen automatisch löschen',

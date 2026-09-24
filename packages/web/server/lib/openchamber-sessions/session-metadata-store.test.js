@@ -155,6 +155,59 @@ describe('createSessionMetadataStore', () => {
   });
 
   describe('legacy sessions-metadata.json', () => {
+    it('keeps a restore watermark durable when retiring the legacy file fails', async () => {
+      const dataDir = makeDataDir();
+      writeLegacy(dataDir, { ses_1: { openchamber: { goal: { id: 'g1' } } } });
+      const openCode = createFakeOpenCode({ ses_1: { unrelated: 'preserved' } });
+      let failRetire = true;
+      const store = createSessionMetadataStore({ dataDir, openCode, fsPromises: {
+        ...fs.promises,
+        rename: async (from, to) => {
+          if (failRetire && to.endsWith('.migrated')) throw new Error('rename denied');
+          return fs.promises.rename(from, to);
+        },
+      } });
+      await expect(store.setSessionMetadata('ses_1', { openchamber: { sessionRetentionRestoredAt: 500 } }))
+        .rejects.toThrow('rename denied');
+      expect(JSON.parse(fs.readFileSync(legacyFile(dataDir), 'utf8')).ses_1).toEqual({
+        unrelated: 'preserved',
+        openchamber: { goal: { id: 'g1' }, sessionRetentionRestoredAt: 500 },
+      });
+      const restarted = createSessionMetadataStore({ dataDir, openCode });
+      await restarted.migrateLegacy();
+      expect(openCode.sessions.get('ses_1').openchamber.sessionRetentionRestoredAt).toBe(500);
+      failRetire = false;
+      await store.setSessionMetadata('ses_1', { openchamber: { sessionRetentionRestoredAt: 600 } });
+      expect(openCode.sessions.get('ses_1').openchamber.sessionRetentionRestoredAt).toBe(600);
+      expect(openCode.sessions.get('ses_1').unrelated).toBe('preserved');
+      await expect(store.listUnmigrated()).resolves.toEqual({});
+    });
+
+    it('rejects legacy persistence and upstream write failures without losing metadata', async () => {
+      const dataDir = makeDataDir();
+      writeLegacy(dataDir, { ses_1: { keep: true } });
+      const openCode = createFakeOpenCode({ ses_1: {} });
+      let failDisk = true;
+      const store = createSessionMetadataStore({ dataDir, openCode, fsPromises: {
+        ...fs.promises,
+        writeFile: async (...args) => {
+          if (failDisk) throw new Error('disk full');
+          return fs.promises.writeFile(...args);
+        },
+      } });
+      const patch = { openchamber: { sessionRetentionRestoredAt: 500 } };
+      await expect(store.setSessionMetadata('ses_1', patch)).rejects.toThrow('disk full');
+      expect(openCode.writes).toEqual([]);
+      await expect(store.get('ses_1')).resolves.toEqual({ keep: true });
+      failDisk = false;
+      openCode.failWrite = new Error('upstream unavailable');
+      await expect(store.setSessionMetadata('ses_1', patch)).rejects.toThrow('upstream unavailable');
+      expect(JSON.parse(fs.readFileSync(legacyFile(dataDir), 'utf8')).ses_1).toEqual({ keep: true, ...patch });
+      openCode.failWrite = null;
+      await store.setSessionMetadata('ses_1', patch);
+      expect(openCode.sessions.get('ses_1')).toEqual({ keep: true, ...patch });
+    });
+
     it('serves a legacy entry over the OpenCode record until it is migrated', async () => {
       const openCode = createFakeOpenCode({ ses_1: { openchamber: { kind: 'review' } } });
       const dataDir = makeDataDir();
@@ -177,7 +230,7 @@ describe('createSessionMetadataStore', () => {
       await store.setSessionMetadata('ses_1', { openchamber: { assist: { recap: 'r' } } });
 
       // The legacy record is the newer one: it wins over what OpenCode held.
-      expect(openCode.sessions.get('ses_1')).toEqual({ openchamber: { goal: { id: 'g1' }, assist: { recap: 'r' } } });
+      expect(openCode.sessions.get('ses_1')).toEqual({ stale: true, openchamber: { goal: { id: 'g1' }, assist: { recap: 'r' } } });
       expect(JSON.parse(fs.readFileSync(legacyFile(dataDir), 'utf8'))).toEqual({ ses_2: { notes: ['n'] } });
       await expect(store.listUnmigrated()).resolves.toEqual({ ses_2: { notes: ['n'] } });
     });
@@ -185,17 +238,17 @@ describe('createSessionMetadataStore', () => {
     it('pushes every entry, drops sessions OpenCode no longer has, and retires the file', async () => {
       const openCode = createFakeOpenCode({ ses_1: { stale: true }, ses_2: { stale: true } });
       const dataDir = makeDataDir();
-      // `{}` is a cleared record: it must clear OpenCode's copy too.
+      // Legacy entries overlay their fields while preserving unrelated upstream metadata.
       writeLegacy(dataDir, { ses_1: { openchamber: { goal: { id: 'g1' } } }, ses_2: {}, ses_gone: { a: 1 } });
       const { store } = makeStore(openCode, dataDir);
 
       await expect(store.migrateLegacy()).resolves.toBe(0);
 
-      expect(openCode.sessions.get('ses_1')).toEqual({ openchamber: { goal: { id: 'g1' } } });
-      expect(openCode.sessions.get('ses_2')).toEqual({});
+      expect(openCode.sessions.get('ses_1')).toEqual({ stale: true, openchamber: { goal: { id: 'g1' } } });
+      expect(openCode.sessions.get('ses_2')).toEqual({ stale: true });
       expect(fs.existsSync(legacyFile(dataDir))).toBe(false);
       expect(JSON.parse(fs.readFileSync(`${legacyFile(dataDir)}.migrated`, 'utf8'))).toMatchObject({ ses_gone: { a: 1 } });
-      await expect(store.get('ses_1')).resolves.toEqual({ openchamber: { goal: { id: 'g1' } } });
+      await expect(store.get('ses_1')).resolves.toEqual({ stale: true, openchamber: { goal: { id: 'g1' } } });
     });
 
     it('keeps an entry OpenCode could not take for the next sweep', async () => {

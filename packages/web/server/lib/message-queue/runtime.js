@@ -230,9 +230,7 @@ export function createMessageQueueRuntime({
   // Resolves the `openchamber/auto` sentinel into a real model and agent right
   // before the send; absent means the queue never sees the sentinel.
   resolveAutoSelection = null,
-  isSessionArchived = null,
-  unarchiveSession = null,
-  readSettingsFromDiskMigrated = null,
+  restoreSessionForDelivery = null,
   dataDir,
   fetchImpl = fetch,
   now = Date.now,
@@ -484,17 +482,7 @@ export function createMessageQueueRuntime({
   };
 
   const sendItem = async (sessionId, directory, item) => {
-    if (readSettingsFromDiskMigrated && isSessionArchived && unarchiveSession) {
-      const settings = await readSettingsFromDiskMigrated();
-      const archived = settings?.sessionAutoUnarchiveOnPrompt ? await isSessionArchived(sessionId) : false;
-      if (settings?.sessionAutoUnarchiveOnPrompt && archived === null) {
-        throw new Error('Session archive state is unavailable');
-      }
-      if (settings?.sessionAutoUnarchiveOnPrompt && archived === true) {
-        const restored = await unarchiveSession(sessionId);
-        if (!restored) throw new Error('Unable to restore archived session before queued prompt');
-      }
-    }
+    await restoreSessionForDelivery?.(sessionId, directory);
     const { providerID, modelID, variant } = item.sendConfig;
     let agent = item.sendConfig.agent;
     let model = { id: modelID, providerID, ...(variant ? { variant } : {}) };

@@ -981,7 +981,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': 'Автоматичні перевірки виконуються, поки OpenChamber відкритий.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Автоматично архівувати неактивні сеанси',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Вік неактивного сеансу',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Архівувати сеанси після злиття пов’язаних pull request',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Архівувати сеанси після злиття запиту на злиття з їхньої гілки',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': 'Відновлювати архівовані сеанси під час запиту',
   'settings.openchamber.sessionRetention.field.excludePinned': 'Зберігати закріплені сеанси',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': 'Автоматично видаляти архівовані сеанси',

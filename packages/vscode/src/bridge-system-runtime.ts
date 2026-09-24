@@ -35,6 +35,14 @@ export const sessionMetadataOnOpenCode = (manager: OpenCodeManager | undefined):
         throw error;
       }
     },
+    readSession: async (sessionID) => {
+      try {
+        return await client.session.get({ sessionID });
+      } catch (error) {
+        if (error instanceof Error && isSessionNotFound(error)) return null;
+        throw error;
+      }
+    },
     write: (sessionID, metadata) => client.session.update({ sessionID, metadata }),
   };
 };
@@ -393,7 +401,7 @@ export async function handleSystemBridgeMessage(
       const { ids } = (payload || {}) as { ids?: JsonValue };
       const targets = asSessionIdList(ids);
       if (targets.length === 0) return { id, type, success: false, error: 'ids must be a non-empty array of session ids' };
-      return { id, type, success: true, data: await deps.sessionState.unarchive(targets) };
+      return { id, type, success: true, data: await deps.sessionState.unarchive(targets, sessionMetadataOnOpenCode(ctx?.manager)) };
     }
 
     case 'api:sessions/metadata:get': {

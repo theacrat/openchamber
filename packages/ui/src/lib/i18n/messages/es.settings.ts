@@ -981,7 +981,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': 'Las comprobaciones automáticas se ejecutan mientras OpenChamber está abierto.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Archivar automáticamente las sesiones inactivas',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Antigüedad de la sesión inactiva',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Archivar sesiones cuando se fusionen las solicitudes de extracción vinculadas',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Archivar sesiones cuando se fusione la solicitud de extracción de su rama',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': 'Restaurar sesiones archivadas al recibir una solicitud',
   'settings.openchamber.sessionRetention.field.excludePinned': 'Conservar sesiones fijadas',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': 'Eliminar automáticamente las sesiones archivadas',

@@ -1638,9 +1638,9 @@ export function registerGitHubRoutes(app) {
         base: prData.base?.ref,
         head: prData.head?.ref,
         headSha: prData.head?.sha,
-          mergeable: prData.mergeable,
-          mergeableState: prData.mergeable_state,
-          mergedAt: prData.merged_at || null,
+        mergeable: prData.mergeable,
+        mergeableState: prData.mergeable_state,
+        mergedAt: prData.merged_at || null,
         author: prData.user ? { login: prData.user.login, id: prData.user.id, avatarUrl: prData.user.avatar_url } : null,
         headLabel: prData.head?.label,
         headRepo: headRepo && headRepo.owner && headRepo.repo && headRepo.url ? headRepo : null,
@@ -1907,31 +1907,6 @@ export function registerGitHubRoutes(app) {
       }
       console.error('Failed to load GitHub PR context:', error);
       return res.status(500).json({ error: error.message || 'Failed to load GitHub PR context' });
-    }
-  });
-
-  app.get('/api/github/pr/merge-state', async (req, res) => {
-    try {
-      const directory = typeof req.query?.directory === 'string' ? req.query.directory.trim() : '';
-      const number = typeof req.query?.number === 'string' ? Number(req.query.number) : null;
-      if (!directory || !Number.isInteger(number) || number < 1) return res.status(400).json({ error: 'directory and number are required' });
-      const { getOctokitOrNull } = await getGitHubLibraries();
-      const octokit = getOctokitOrNull();
-      if (!octokit) return res.json({ connected: false });
-      const repo = await resolveRepoForRequest(octokit, directory, getRequestedRepo(req));
-      if (!repo) return res.status(503).json({ error: 'GitHub repository could not be resolved' });
-      const response = await octokit.rest.pulls.get({ owner: repo.owner, repo: repo.repo, pull_number: number });
-      const pr = response?.data;
-      if (!pr) return res.status(404).json({ error: 'PR not found' });
-      return res.json({
-        connected: true,
-        number: pr.number,
-        url: pr.html_url,
-        state: pr.merged || pr.merged_at ? 'merged' : (pr.state === 'closed' ? 'closed' : 'open'),
-        mergedAt: pr.merged_at || null,
-      });
-    } catch (error) {
-      return res.status(500).json({ error: error?.message || 'Failed to load pull request state' });
     }
   });
 }

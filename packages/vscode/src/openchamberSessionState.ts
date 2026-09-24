@@ -60,6 +60,7 @@ export type SessionStateFs = {
 export type SessionMetadataOnOpenCode = {
   read: (sessionID: string) => Promise<SessionMetadata | null>;
   write: (sessionID: string, metadata: SessionMetadata) => Promise<void>;
+  readSession: (sessionID: string) => Promise<{ time?: { archived?: number } } | null>;
 };
 
 type SessionStateStoreOptions = {
@@ -155,12 +156,16 @@ export const createSessionStateStore = ({
   const archivePath = path.join(dataDir, ARCHIVE_FILE_NAME);
   const metadataPath = path.join(dataDir, METADATA_FILE_NAME);
   let writeChain: Promise<unknown> = Promise.resolve();
+  let mutationChain: Promise<void> = Promise.resolve();
+  const mutate = <T>(operation: () => Promise<T>): Promise<T> => {
+    const next = mutationChain.then(operation, operation);
+    mutationChain = next.then(() => undefined, () => undefined);
+    return next;
+  };
 
   /**
    * Parses one state file. A missing file is the normal first run and reads
-   * as empty; unreadable bytes are moved aside so the next write cannot
-   * overwrite what the user had, and read as empty too. An I/O failure other
-   * than "missing" is reported as `null`: unknown, not empty.
+   * as empty; malformed contents and I/O failures are unknown, not empty.
    */
   const readJsonObjectFile = async (filePath: string): Promise<JsonObject | null> => {
     let raw: string;
@@ -173,10 +178,8 @@ export const createSessionStateStore = ({
     }
     const parsed = parseJson(raw);
     if (isJsonObject(parsed)) return parsed;
-    const backup = `${filePath}.corrupt-${now()}`;
-    await fsPromises.rename(filePath, backup).catch(() => undefined);
-    console.warn(`[openchamber-sessions] ${path.basename(filePath)} was not a JSON object and was moved to ${backup}`);
-    return {};
+    console.warn(`[openchamber-sessions] ${path.basename(filePath)} is not a JSON object`);
+    return null;
   };
 
   const writeJsonObjectFile = (filePath: string, value: JsonObject): Promise<void> => {
@@ -198,9 +201,10 @@ export const createSessionStateStore = ({
     const result: ArchivedSessions = {};
     for (const [sessionID, value] of Object.entries(parsed)) {
       const id = asSessionId(sessionID);
-      if (!id) continue;
+      if (!id) return null;
       if (value === null) result[id] = null;
       else if (isTimestamp(value)) result[id] = value;
+      else return null;
     }
     return result;
   };
@@ -233,6 +237,47 @@ export const createSessionStateStore = ({
     return { applied: targets, failedIds: [] as string[] };
   };
 
+  const setMetadata = async (sessionID: string, patch: SessionMetadata, openCode: SessionMetadataOnOpenCode): Promise<SessionMetadata> => {
+    const stored = await readMetadata();
+    if (!stored) throw new Error('session metadata is unavailable: its file could not be read');
+    const upstream = await openCode.read(sessionID);
+    if (!upstream) throw new Error(`session ${sessionID} was not found`);
+    const legacy = stored[sessionID];
+    const merged = mergeMetadataPatch(legacy ? mergeMetadataPatch(upstream, legacy) : upstream, patch);
+    await openCode.write(sessionID, merged);
+    if (legacy) {
+      const latest = await readMetadata();
+      if (!latest) throw new Error('session metadata is unavailable: its file could not be read');
+      if (latest[sessionID]) {
+        if (JSON.stringify(latest[sessionID]) !== JSON.stringify(legacy)) {
+          throw new Error('Legacy session metadata changed during migration');
+        }
+        delete latest[sessionID];
+        await writeJsonObjectFile(metadataPath, latest);
+      }
+    }
+    return merged;
+  };
+
+  const restoreSession = async (sessionID: string, openCode: SessionMetadataOnOpenCode): Promise<boolean> => {
+    try {
+      const archived = await readArchived();
+      if (!archived) return false;
+      if (Object.prototype.hasOwnProperty.call(archived, sessionID)) {
+        if (archived[sessionID] === null) return true;
+      } else {
+        const upstream = await openCode.readSession(sessionID);
+        if (!upstream) return false;
+        if (asTimestamp(upstream.time?.archived) === null) return true;
+      }
+      await setMetadata(sessionID, { openchamber: { sessionRetentionRestoredAt: now() } }, openCode);
+      const result = await applyArchive([sessionID], null);
+      return result.applied.includes(sessionID);
+    } catch {
+      return false;
+    }
+  };
+
   return {
     archivePath,
     metadataPath,
@@ -240,68 +285,36 @@ export const createSessionStateStore = ({
     readArchived,
     /** `{ [sessionID]: metadata }`, or `null` when the file could not be read. */
     readMetadata,
-    archive: async (ids: string[], archivedAt: number | null = null) => {
+    archive: (ids: string[], archivedAt: number | null = null) => mutate(async () => {
       const stamp = archivedAt ?? now();
       const { applied, failedIds } = await applyArchive(ids, stamp);
       return { archived: applied.map((id) => ({ id, archivedAt: stamp })), failedIds };
-    },
-    unarchive: async (ids: string[]) => {
-      const { applied, failedIds } = await applyArchive(ids, null);
-      return { restored: applied.map((id) => ({ id, archivedAt: null })), failedIds };
-    },
-    restoreForDelivery: async (sessionID: string, openCode: SessionMetadataOnOpenCode): Promise<boolean> => {
-      const result = await applyArchive([sessionID], null);
-      if (!result.applied.includes(sessionID)) return false;
-      try {
-        await (async () => {
-          const stored = await readMetadata();
-          if (!stored) throw new Error('session metadata is unavailable');
-          const upstream = await openCode.read(sessionID);
-          if (!upstream) throw new Error(`session ${sessionID} was not found`);
-          await openCode.write(sessionID, mergeMetadataPatch(upstream, {
-            openchamber: { sessionRetentionRestoredAt: now() },
-          }));
-        })();
-      } catch {
-        return false;
+    }),
+    unarchive: (ids: string[], openCode: SessionMetadataOnOpenCode) => mutate(async () => {
+      const restored: Array<{ id: string; archivedAt: null }> = [];
+      const failedIds: string[] = [];
+      for (const sessionID of asSessionIdList(ids)) {
+        const result = await restoreSession(sessionID, openCode);
+        if (result) restored.push({ id: sessionID, archivedAt: null });
+        else failedIds.push(sessionID);
       }
-      return true;
-    },
+      return { restored, failedIds };
+    }),
+    restoreForDelivery: (sessionID: string, openCode: SessionMetadataOnOpenCode) => mutate(() => restoreSession(sessionID, openCode)),
     /** The session's full metadata: a legacy entry laid over OpenCode's record. `{}` for an unknown session. */
     getMetadata: async (sessionID: string, openCode: SessionMetadataOnOpenCode): Promise<SessionMetadata> => {
       const stored = await readMetadata();
       if (!stored) throw new Error('session metadata is unavailable: its file could not be read');
       const upstream = await openCode.read(sessionID);
       const legacy = stored[sessionID];
-      return legacy ? { ...(upstream ?? {}), ...legacy } : upstream ?? {};
+      return legacy ? mergeMetadataPatch(upstream ?? {}, legacy) : upstream ?? {};
     },
     /**
      * Applies a merge patch on OpenCode and resolves with the session's full
      * metadata afterwards. A legacy entry is folded in and then dropped from
      * the file, since OpenCode now holds it.
      */
-    setMetadata: async (sessionID: string, patch: SessionMetadata, openCode: SessionMetadataOnOpenCode): Promise<SessionMetadata> => {
-      const stored = await readMetadata();
-      if (!stored) throw new Error('session metadata is unavailable: its file could not be read');
-      const upstream = await openCode.read(sessionID);
-      if (!upstream) throw new Error(`session ${sessionID} was not found`);
-      const legacy = stored[sessionID];
-      const merged = mergeMetadataPatch(legacy ? { ...upstream, ...legacy } : upstream, patch);
-      await openCode.write(sessionID, merged);
-      if (legacy) {
-        // Re-read: the web server or another window may have changed the file.
-        const latest = await readMetadata();
-        if (latest && latest[sessionID]) {
-          const next = { ...latest };
-          delete next[sessionID];
-          await writeJsonObjectFile(metadataPath, next).catch((error) => {
-            // OpenCode holds the record; a stale entry is pushed again later.
-            console.warn('[openchamber-sessions] could not update the legacy metadata file:', describeError(error));
-          });
-        }
-      }
-      return merged;
-    },
+    setMetadata: (sessionID: string, patch: SessionMetadata, openCode: SessionMetadataOnOpenCode) => mutate(() => setMetadata(sessionID, patch, openCode)),
   };
 };
 
@@ -321,7 +334,7 @@ const overlaySessionRecord = (
   if (!isJsonObject(value)) return value;
   const id = asSessionId(value.id);
   if (!id) return value;
-  let result: JsonObject = value;
+  let result = value;
   if (archived && Object.prototype.hasOwnProperty.call(archived, id)) {
     const time = isJsonObject(result.time) ? result.time : {};
     const archivedAt = archived[id];
@@ -337,7 +350,7 @@ const overlaySessionRecord = (
     const ours = stored[id];
     if (ours) {
       const theirs = isJsonObject(result.metadata) ? result.metadata : {};
-      result = { ...result, metadata: { ...theirs, ...ours } };
+      result = { ...result, metadata: mergeMetadataPatch(theirs, ours) };
     }
   }
   return result;

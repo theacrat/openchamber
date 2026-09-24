@@ -307,8 +307,7 @@ export const registerOpenCodeProxy = (app, deps) => {
     // migrated.
     getArchivedSessions = null,
     getStoredSessionMetadata = null,
-    readSettingsFromDiskMigrated = null,
-    unarchiveSession = null,
+    restoreSessionForDelivery = null,
   } = deps;
 
   /**
@@ -951,18 +950,15 @@ export const registerOpenCodeProxy = (app, deps) => {
   });
   app.get('/api/event', forwardSseRequest);
 
-  app.post(['/api/session/:sessionID/prompt', '/api/session/:sessionID/command'], async (req, res, next) => {
-    if (!readSettingsFromDiskMigrated || !unarchiveSession || typeof getArchivedSessions !== 'function') return next();
+  app.post(['/api/session/:sessionID/prompt', '/api/session/:sessionID/message', '/api/session/:sessionID/prompt_async', '/api/session/:sessionID/command'], async (req, res, next) => {
+    if (!restoreSessionForDelivery) return next();
     try {
-      const settings = await readSettingsFromDiskMigrated();
-      if (settings?.sessionAutoUnarchiveOnPrompt === true) {
-        const archived = await readArchivedSessions();
-        if (!archived) return res.status(503).json({ error: 'Session archive state is unavailable' });
-        if (typeof archived[req.params.sessionID] === 'number') {
-          const restored = await unarchiveSession(req.params.sessionID);
-          if (!restored) return res.status(409).json({ error: 'Unable to restore archived session before prompt' });
-        }
-      }
+      const headers = normalizeForwardedDirectoryHeaders({
+        'x-opencode-directory': req.get('x-opencode-directory'),
+        'x-opencode-directory-encoding': req.get('x-opencode-directory-encoding'),
+      });
+      const directory = headers['x-opencode-directory'] || new URL(req.originalUrl, 'http://localhost').searchParams.get('directory') || '';
+      await restoreSessionForDelivery(req.params.sessionID, directory);
       return next();
     } catch (error) {
       return next(error);

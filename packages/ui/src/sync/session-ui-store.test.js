@@ -1,17 +1,19 @@
 import { ensureChatsRootDirectory } from '@/lib/chatDirectories';
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { opencodeClient } from '@/lib/opencode/client';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSessionWorktreeStore } from './session-worktree-store';
 import { expandSlashCommandGoalObjective, routeMessage, useSessionUIStore } from './session-ui-store';
 import { setActionRefs, setOptimisticRefs } from './session-actions';
+import * as sessionActions from './session-actions';
+import { useUIStore } from '@/stores/useUIStore';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { useCommandsStore } from '@/stores/useCommandsStore';
 import { useSessionGoalArmStore } from '@/stores/useSessionGoalArmStore';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useSelectionStore } from './selection-store';
-import { getRuntimeKey } from '@/lib/runtime-switch';
+import { getRuntimeKey, switchRuntimeEndpoint } from '@/lib/runtime-switch';
 import { getDeferredSafeStorage } from '@/stores/utils/safeStorage';
 import { CHAT_DRAFT_PROJECT_ID } from '@/lib/chatDirectories';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
@@ -384,6 +386,34 @@ describe('sendMessage captured target', () => {
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toContain('runtime changed');
     expect(calls).toHaveLength(0);
+  });
+
+  test('cancels before selection changes when runtime switches across prompt restore', async () => {
+    const runtimeKey = getRuntimeKey();
+    const enabled = useUIStore.getState().sessionAutoUnarchiveOnPrompt;
+    const entities = useGlobalSessionsStore.getState().entityById;
+    useUIStore.setState({ sessionAutoUnarchiveOnPrompt: true });
+    useGlobalSessionsStore.setState({ entityById: new Map([['session-current', {
+      id: 'session-current', time: { archived: 1 },
+    }]]) });
+    const restore = spyOn(sessionActions, 'unarchiveSession').mockImplementation(async () => {
+      switchRuntimeEndpoint({ apiBaseUrl: '', runtimeKey: `${runtimeKey}-restore-switch` });
+      return true;
+    });
+    const saveSelection = spyOn(useSelectionStore.getState(), 'saveSessionModelSelection');
+    try {
+      await expect(useSessionUIStore.getState().sendMessage('continue', 'provider-a', 'model-a'))
+        .rejects.toThrow('Message was not sent because the runtime changed.');
+      expect(restore.mock.calls).toEqual([['session-current', runtimeKey]]);
+      expect(saveSelection.mock.calls).toHaveLength(0);
+      expect(calls).toHaveLength(0);
+    } finally {
+      restore.mockRestore();
+      saveSelection.mockRestore();
+      switchRuntimeEndpoint({ apiBaseUrl: '', runtimeKey });
+      useUIStore.setState({ sessionAutoUnarchiveOnPrompt: enabled });
+      useGlobalSessionsStore.setState({ entityById: entities });
+    }
   });
 });
 

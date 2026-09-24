@@ -1,7 +1,11 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import type { BridgeContext } from './bridge';
 import { handleProxyBridgeMessage } from './bridge-proxy-runtime';
+import { createSessionStateStore, type SessionMetadata, type SessionMetadataOnOpenCode } from './openchamberSessionState';
 
 const deps = {
   tryHandleLocalFsProxy: async () => null,
@@ -33,17 +37,63 @@ const asBridgeContext = (manager: typeof connectedManager): BridgeContext => ({ 
 const ctx = asBridgeContext(connectedManager);
 
 describe('archived delivery targets', () => {
+  test('both delivery bridges restore upstream-only archives through the state owner before sending', async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), 'restore-proxy-'));
+    const originalFetch = globalThis.fetch;
+    const metadata = new Map<string, SessionMetadata>([['generic', {}], ['specialized', {}], ['failure', {}]]);
+    const store = createSessionStateStore({ dataDir, now: () => 100 });
+    const openCode: SessionMetadataOnOpenCode = {
+      readSession: async () => ({ time: { archived: 10 } }),
+      read: async (id) => metadata.get(id) ?? null,
+      write: async (id, value) => {
+        if (id === 'failure') throw new Error('write failed');
+        metadata.set(id, value);
+      },
+    };
+    const sent: string[] = [];
+    try {
+      globalThis.fetch = async (input) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        const id = url.pathname.split('/')[3];
+        assert.deepEqual(metadata.get(id), { openchamber: { sessionRetentionRestoredAt: 100 } });
+        assert.equal((await store.readArchived())?.[id], null);
+        sent.push(id);
+        return Response.json({});
+      };
+      const restorationDeps = {
+        ...deps,
+        sessionState: store,
+        shouldRestoreArchivedSession: async () => true,
+        restoreArchivedSession: (id: string) => store.restoreForDelivery(id, openCode),
+      };
+      await handleProxyBridgeMessage({ id: 'generic', type: 'api:proxy', payload: {
+        method: 'POST', path: '/api/session/generic/command', bodyBase64: Buffer.from('{}').toString('base64'),
+      } }, ctx, restorationDeps);
+      await handleProxyBridgeMessage({ id: 'specialized', type: 'api:session:message', payload: {
+        path: '/api/session/specialized/prompt', bodyText: '{}',
+      } }, ctx, restorationDeps);
+      const failed = await handleProxyBridgeMessage({ id: 'failure', type: 'api:session:message', payload: {
+        path: '/api/session/failure/prompt', bodyText: '{}',
+      } }, ctx, restorationDeps);
+      assert.partialDeepStrictEqual(failed, { success: true, data: { status: 409 } });
+      assert.deepEqual(sent, ['generic', 'specialized']);
+    } finally {
+      globalThis.fetch = originalFetch;
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   for (const route of ['prompt', 'command']) {
     test(`generic ${route} restores archived targets and preserves the body`, async () => {
       const originalFetch = globalThis.fetch;
       const calls: string[] = [];
       const body = JSON.stringify({ text: 'continue', name: 'review' });
       try {
-        globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        globalThis.fetch = async (_input, init) => {
           calls.push('send');
-          assert.equal(Buffer.from(init?.body as Uint8Array).toString(), body);
+          assert.equal(await new Response(init?.body).text(), body);
           return new Response('{}', { headers: { 'content-type': 'application/json' } });
-        }) as typeof fetch;
+        };
         await handleProxyBridgeMessage({ id: route, type: 'api:proxy', payload: {
           method: 'POST', path: `/api/session/abc/${route}`, bodyBase64: Buffer.from(body).toString('base64'),
         } }, ctx, {
@@ -64,10 +114,10 @@ describe('archived delivery targets', () => {
     let writes = 0;
     let sends = 0;
     try {
-      globalThis.fetch = (async () => {
+      globalThis.fetch = async () => {
         sends += 1;
         return new Response('{}', { headers: { 'content-type': 'application/json' } });
-      }) as typeof fetch;
+      };
       for (const archived of [false, true]) {
         const response = await handleProxyBridgeMessage({ id: 'prompt', type: 'api:session:message', payload: {
           path: '/api/session/abc/prompt', bodyText: '{}',
@@ -75,7 +125,7 @@ describe('archived delivery targets', () => {
           ...deps,
           sessionState: { readArchived: async () => ({ abc: archived ? 10 : null }), readMetadata: async () => ({}) },
           shouldRestoreArchivedSession: async () => true,
-          restoreArchivedSession: async () => { writes += 1; return false; },
+          restoreArchivedSession: async () => { if (archived) writes += 1; return !archived; },
         });
         assert.ok(response);
         assert.match(JSON.stringify(response.data), archived ? /409/ : /200/);

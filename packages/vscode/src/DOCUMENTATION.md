@@ -15,6 +15,10 @@ Keep `bridge.ts` as a thin orchestration layer that delegates message handling t
 - `bridge-git-runtime.ts`
   - Standard Git message handlers.
 
+- `bridge-github-runtime.ts`
+  - Handles `api:github/pr:status` through the shared server GitHub resolver. It uses OpenChamber's saved GitHub account or the existing `gh` credential fallback on the extension host, not VS Code authentication sessions. No credential returns `connected: false`; request failures return bridge errors.
+  - Branch, remote and force options reach the shared resolver, including its fork matching and checkout-ancestry check for historical PRs. Results include `mergedAt`; checks are unavailable and merge actions remain unsupported. Other GitHub bridge operations remain disabled.
+
 - `bridge-git-special-runtime.ts`
   - Specialized Git flows (`pr-description`, `conflict-details`) and generation helpers.
   - Generation runs through OpenCode's `POST /api/experimental/generate`, which answers with the finished text. There is no throwaway session to create, poll and delete any more.
@@ -325,6 +329,18 @@ features sharing the `openchamber` namespace do not erase each other. An entry
 an older version left in `sessions-metadata.json` is laid over the record on
 reads and pushed to OpenCode on that session's next write, then dropped from
 the file; the web server sweeps the rest.
+
+Manual unarchive and prompt restoration share the state store's restore operation.
+An explicit local archive value wins, including `null`; without one, restoration
+reads the upstream session's `time.archived`. Active sessions are a no-op.
+Restoration writes `openchamber.sessionRetentionRestoredAt` through the metadata
+migration path and removes the migrated legacy entry before clearing the archive
+flag. Metadata writes, changed legacy entries, cleanup failures and archive-file
+read failures block delivery and leave restoration retryable. Malformed archive
+files remain intact and unknown. Mutations within one store run in order.
+Legacy metadata is a recursive merge patch over upstream metadata on reads,
+proxy overlays and migration. Legacy keys win; unrelated nested upstream keys
+survive, and legacy `null` deletes a key.
 
 The webview answers `POST /api/openchamber/sessions/archive|unarchive` and
 `GET|POST /api/openchamber/sessions/:id/metadata` through the

@@ -981,7 +981,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': '자동 검사는 OpenChamber가 열려 있는 동안 실행됩니다.',
   'settings.openchamber.sessionRetention.field.autoArchive': '비활성 세션 자동 보관',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': '비활성 세션 기간',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': '연결된 풀 리퀘스트가 병합되면 세션 보관',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': '세션 브랜치의 풀 리퀘스트가 병합되면 세션 보관',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': '프롬프트가 오면 보관된 세션 복원',
   'settings.openchamber.sessionRetention.field.excludePinned': '고정된 세션 유지',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': '보관된 세션 자동 삭제',

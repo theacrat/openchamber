@@ -1261,6 +1261,7 @@ export type DeleteSessionOptions = {
    * confirmation spans a runtime switch.
    */
   expectedRuntimeKey?: string
+  beforeMutation?: () => boolean
 }
 
 /**
@@ -1286,6 +1287,7 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
   try {
     await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey)
     if (isStaleRuntime(expectedRuntimeKey)) return false
+    if (options?.beforeMutation && !options.beforeMutation()) return false
     const deleted = await opencodeClient.deleteSession(sessionId, sessionDirectory)
     if (isStaleRuntime(expectedRuntimeKey)) return false
     if (deleted !== true) {
@@ -1390,13 +1392,18 @@ export async function deleteSessions(
  * stays archived on that runtime and is re-read from the server the next time
  * the runtime is loaded.
  */
-export async function archiveSession(sessionId: string, expectedRuntimeKey = getRuntimeKey()): Promise<boolean> {
+export async function archiveSession(
+  sessionId: string,
+  expectedRuntimeKey = getRuntimeKey(),
+  beforeMutation?: () => boolean,
+): Promise<boolean> {
   if (isStaleRuntime(expectedRuntimeKey)) return false
   const sessionDirectory = getSessionDirectory(sessionId)
   const archivedAt = Date.now()
   try {
     await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey)
     if (isStaleRuntime(expectedRuntimeKey)) return false
+    if (beforeMutation && !beforeMutation()) return false
     if (!sessionDirectory) throw new Error("archive failed: session directory is unknown")
     const result = await requestSessionArchiveBatch(sessionDirectory, [sessionId], archivedAt)
     if (isStaleRuntime(expectedRuntimeKey)) return false
@@ -1606,10 +1613,10 @@ export async function unarchiveSession(sessionId: string, expectedRuntimeKey = g
     if (!result.restored.includes(sessionId)) {
       throw new Error("unarchive failed: server did not return the restored session")
     }
+    // The runtime owns the restore transaction. It persists the watermark
+    // before clearing archive state, so this action only records the
+    // confirmed transition locally.
     markSessionRestored(sessionId)
-    await requestSessionMetadataUpdate(sessionId, {
-      openchamber: { sessionRetentionRestoredAt: Date.now() },
-    }).catch(() => undefined)
     const restored = withArchivedAt(sessionId, null)
     if (restored) useGlobalSessionsStore.getState().upsertSession(restored)
     if (sessionDirectory) registerSessionDirectory(sessionId, sessionDirectory)

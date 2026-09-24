@@ -88,7 +88,7 @@ that page, so callers cannot mistake a partial page for a complete one.
 - The history answer is remembered per repo+branch so discovery polls do not re-query it: a found closed/merged record for `6h`, and "no history yet" for `10m`. A found record only changes if a second PR appears on the same head, and while that one is open the open-PR path wins without ever reading this cache.
 - Creating, merging, or closing a PR invalidates both the shared repo pull list and that remembered history.
 - The route skips the checks summary and the merge-permission lookup for a closed/merged PR: neither is actionable, and both cost extra GitHub calls.
-- `GET /api/github/pr/merge-state` is the retention-owned narrow lookup. It returns `{ connected: false }` when GitHub is unavailable, or the PR identity, state, and `mergedAt` when connected. Retention uses it instead of the full context route.
+- Branch status includes `mergedAt`. Retention uses the same branch association as the thread list, without an explicit PR link or a forced refresh.
 - `403` and `404` during repo lookups are treated as expected gaps, not hard errors.
 
 ## Shared client state model

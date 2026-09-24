@@ -981,7 +981,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': 'OpenChamber 打开时才会运行自动检查。',
   'settings.openchamber.sessionRetention.field.autoArchive': '自动归档不活跃会话',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': '不活跃会话期限',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': '关联拉取请求合并后归档会话',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': '会话所在分支的拉取请求合并后归档会话',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': '收到提示时恢复已归档会话',
   'settings.openchamber.sessionRetention.field.excludePinned': '保留已固定会话',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': '自动删除已归档会话',
