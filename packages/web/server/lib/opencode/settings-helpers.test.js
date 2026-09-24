@@ -567,11 +567,11 @@ describe('settings helpers', () => {
       expect(response.desktopLanAccessActive).toBe(false);
       expect(response.desktopLanAccessBlockedReason).toBe('missing-password');
     } finally {
-      if (typeof previousRuntime === 'string') process.env.OPENCHAMBER_RUNTIME = previousRuntime;
+      if (previousRuntime !== undefined) process.env.OPENCHAMBER_RUNTIME = previousRuntime;
       else delete process.env.OPENCHAMBER_RUNTIME;
-      if (typeof previousActive === 'string') process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE = previousActive;
+      if (previousActive !== undefined) process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE = previousActive;
       else delete process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE;
-      if (typeof previousReason === 'string') process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = previousReason;
+      if (previousReason !== undefined) process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = previousReason;
       else delete process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
     }
   });
