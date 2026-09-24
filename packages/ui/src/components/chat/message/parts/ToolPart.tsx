@@ -12,6 +12,8 @@ import { toolDisplayStyles } from '@/lib/typography';
 import { WorkerHighlightedCode } from '@/components/code/WorkerHighlightedCode';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useSessionUIStore } from '@/sync/session-ui-store';
+import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
+import { readManagedSessionResult, readManagedSessionResults } from './taskToolModel';
 import { useSessionMessageRecords, useEnsureSessionMessages } from '@/sync/sync-context';
 import { useUIStore } from '@/stores/useUIStore';
 import { ScrollShadow } from '@/components/ui/ScrollShadow';
@@ -88,6 +90,7 @@ import {
     isQuestionTool,
     isShellTool,
     isSubagentTool,
+    isSessionSpawnTool,
     isWebSearchTool,
     isWriteTool,
     normalizeToolName,
@@ -973,28 +976,31 @@ const TaskToolSummary: React.FC<{
     isActive?: boolean;
 }> = ({ entries, isExpanded, isMobile, output, sessionId, onShowPopup, input, animateTailText = true, isActive = false }) => {
     const { t } = useI18n();
-    const currentDirectory = useEffectiveDirectory();
+    const parentDirectory = useEffectiveDirectory();
     const setCurrentSession = useSessionUIStore((state) => state.setCurrentSession);
     const openContextPanelTab = useUIStore((state) => state.openContextPanelTab);
     const showToolFileIcons = useUIStore((state) => state.showToolFileIcons);
     const runtime = React.useContext(RuntimeAPIContext);
 
     const trimmedOutput = prepareTaskToolOutput(output);
+    const resultDirectory = readManagedSessionResult(output)?.directory;
+    const indexedDirectory = useGlobalSessionsStore((state) => sessionId ? state.entityById.get(sessionId)?.directory : undefined);
     const hasOutput = trimmedOutput.length > 0;
     const [isOutputExpanded, setIsOutputExpanded] = React.useState(false);
 
     const handleOpenSession = (event: React.MouseEvent) => {
         event.stopPropagation();
-        if (sessionId && currentDirectory) {
+        const childDirectory = indexedDirectory ?? resultDirectory;
+        if (sessionId && childDirectory) {
             // In contexts with no ContextPanel (embedded session-chat iframe)
             // or single-surface layouts (mobile, VS Code), navigate in place.
             // Otherwise open a new side-panel tab.
-            if (isEmbeddedSessionChat() || isMobile || runtime?.runtime.isVSCode) {
-                setCurrentSession(sessionId, currentDirectory);
+            if (isEmbeddedSessionChat() || isMobile || runtime?.runtime.isVSCode || childDirectory !== parentDirectory) {
+                setCurrentSession(sessionId, childDirectory);
                 return;
             }
 
-            openContextPanelTab(currentDirectory, {
+            openContextPanelTab(childDirectory, {
                 mode: 'chat',
                 dedupeKey: `session:${sessionId}`,
                 label: agentType.charAt(0).toUpperCase() + agentType.slice(1),
@@ -1713,7 +1719,7 @@ const ToolPartContent: React.FC<ToolPartProps> = ({
     const currentDirectory = useEffectiveDirectory() ?? '';
 
     const normalizedPartTool = normalizeToolName(part.tool);
-    const isTaskTool = isSubagentTool(normalizedPartTool);
+    const isTaskTool = isSubagentTool(normalizedPartTool) || isSessionSpawnTool(part.tool, input);
     // The registry sees the full name OpenCode reported (`mcp.jira.search`);
     // the built-in switches below keep the normalized one.
     const presentation = useGuestToolPresentation(part.tool);
@@ -1817,8 +1823,10 @@ const ToolPartContent: React.FC<ToolPartProps> = ({
     }, [localStartAt, pinnedTime.start, time?.start]);
 
     const taskOutputString = React.useMemo(() => {
-        return typeof stateWithData.output === 'string' ? stateWithData.output : undefined;
-    }, [stateWithData.output]);
+        return typeof stateWithData.output === 'string' && stateWithData.output
+            ? stateWithData.output
+            : state?.status === 'error' ? coerceToText(state.error) : undefined;
+    }, [stateWithData.output, state]);
 
     const parsedTaskMetadata = React.useMemo(() => {
         return parseTaskMetadataBlock(taskOutputString);
@@ -1867,8 +1875,12 @@ const ToolPartContent: React.FC<ToolPartProps> = ({
 
     const childSessionLookupId = hasFinalMetadataTaskSummary ? '' : (taskSessionId ?? '');
 
-    const childSessionMessages = useSessionMessageRecords(childSessionLookupId, currentDirectory);
-    useEnsureSessionMessages(childSessionLookupId, currentDirectory);
+    const indexedChildDirectory = useGlobalSessionsStore((state) => childSessionLookupId ? state.entityById.get(childSessionLookupId)?.directory : undefined);
+    const resultChildDirectory = isTaskTool ? readManagedSessionResult(taskOutputString)?.directory : undefined;
+    const childDirectory = indexedChildDirectory ?? resultChildDirectory ?? (isSessionSpawnTool(part.tool, input) ? '' : currentDirectory);
+    const resolvedChildLookupId = childDirectory ? childSessionLookupId : '';
+    const childSessionMessages = useSessionMessageRecords(resolvedChildLookupId, childDirectory || undefined);
+    useEnsureSessionMessages(resolvedChildLookupId, childDirectory || undefined);
 
     const childSessionTaskSummaryEntries = React.useMemo<TaskToolSummaryEntry[]>(() => {
         if (!isTaskTool || !taskSessionId) {
@@ -2250,6 +2262,19 @@ const ToolPartContent: React.FC<ToolPartProps> = ({
             </div>
 
             {}
+            {isExecuteTool(part.tool) ? readManagedSessionResults(taskOutputString).map((child) => (
+                <TaskToolSummary
+                    key={child.sessionId}
+                    entries={[]}
+                    isExpanded={isExpanded}
+                    isMobile={isMobile}
+                    output={JSON.stringify({ ok: true, data: child })}
+                    sessionId={child.sessionId}
+                    onShowPopup={onShowPopup}
+                    animateTailText={animateTailText}
+                    isActive={false}
+                />
+            )) : null}
             {shouldRenderTaskSummary ? (
                 <TaskToolSummary
                     entries={taskSummaryEntries}
