@@ -400,8 +400,6 @@ export async function runAutomaticSessionRetention({ github, git }: {
             result.failedIds.push(id);
             continue;
           }
-          if (policy.kind === 'merged'
-            && (!github || !git || !await mergedAfterLastActivity(session, github, git, mergeReads))) continue;
           const fresh = await opencodeClient.getSession(id, directory);
           if (!currentRuntime()) return result;
           if (fresh.time.updated !== session.time.updated || fresh.time.archived !== session.time.archived) continue;

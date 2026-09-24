@@ -218,7 +218,7 @@ describe('createSessionMetadataStore', () => {
       await expect(store.listUnmigrated()).resolves.toEqual({
         ses_1: { openchamber: { kind: 'review', goal: { id: 'g1' } } },
       });
-      expect(openCode.read).not.toHaveBeenCalled();
+      expect(openCode.read).toHaveBeenCalledWith('ses_1', { directory: '' });
     });
 
     it('migrates a legacy entry on its first write, merged with the patch', async () => {

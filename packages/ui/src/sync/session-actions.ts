@@ -1042,22 +1042,22 @@ export async function setContextObligatoryMessage(
     withContextObligatoryMessage(metadata, message, pinned))
 }
 
-async function cleanupReviewMetadataBeforeDelete(
+async function prepareReviewMetadataCleanup(
   sessionId: string,
   directory?: string | null,
   expectedRuntimeKey?: string,
   beforeMutation?: () => boolean,
-): Promise<void> {
-  if (isStaleRuntime(expectedRuntimeKey)) return
+): Promise<() => Promise<void>> {
+  if (isStaleRuntime(expectedRuntimeKey)) return async () => {}
   let session: Session
   try {
     session = await opencodeClient.getSession(sessionId, directory ?? getSessionDirectory(sessionId))
   } catch {
-    return
+    return async () => {}
   }
-  if (isStaleRuntime(expectedRuntimeKey)) return
+  if (isStaleRuntime(expectedRuntimeKey)) return async () => {}
 
-  const unlinkParent = async (originalSessionID: string, unlink: (metadata: SessionMetadataRecord) => SessionMetadataRecord) => {
+  const unlinkParent = (originalSessionID: string, unlink: (metadata: SessionMetadataRecord) => SessionMetadataRecord) => async () => {
     try {
       await patchSessionMetadata(originalSessionID, directory ?? getSessionDirectory(originalSessionID), unlink, expectedRuntimeKey)
     } catch (error) {
@@ -1069,14 +1069,14 @@ async function cleanupReviewMetadataBeforeDelete(
 
   if (isReviewSession(session)) {
     const originalSessionID = getOriginalSessionID(session)
-    if (originalSessionID) await unlinkParent(originalSessionID, (metadata) => withoutReviewSessionLink(metadata, sessionId))
-    return
+    if (originalSessionID) return unlinkParent(originalSessionID, (metadata) => withoutReviewSessionLink(metadata, sessionId))
+    return async () => {}
   }
 
   if (isBtwSession(session)) {
     const originalSessionID = getBtwOriginalSessionID(session)
-    if (originalSessionID) await unlinkParent(originalSessionID, (metadata) => withoutBtwSessionLink(metadata, sessionId))
-    return
+    if (originalSessionID) return unlinkParent(originalSessionID, (metadata) => withoutBtwSessionLink(metadata, sessionId))
+    return async () => {}
   }
 
   // Deleting or archiving a session that has an active btw fork also removes
@@ -1085,14 +1085,15 @@ async function cleanupReviewMetadataBeforeDelete(
   // operation; the orphaned fork stays visible in the sidebar.
   const btwSessionID = getBtwSessionID(session)
   if (btwSessionID) {
-    try {
-      if (isStaleRuntime(expectedRuntimeKey)) return
-      if (beforeMutation && !beforeMutation()) return
-      await deleteSession(btwSessionID, { expectedRuntimeKey, beforeMutation })
-    } catch (error) {
-      console.warn("[session-actions] failed to delete btw fork before parent delete", error)
+    return async () => {
+      try {
+        await deleteSession(btwSessionID, { expectedRuntimeKey })
+      } catch (error) {
+        console.warn("[session-actions] failed to delete btw fork after parent delete", error)
+      }
     }
   }
+  return async () => {}
 }
 
 /** Remove a server-confirmed session from every live child store that has it. */
@@ -1283,8 +1284,9 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
   if (isStaleRuntime(expectedRuntimeKey)) return false
   const sessionDirectory = getSessionDirectory(sessionId)
   const chatDirectoryCleanup = planChatDirectoryCleanup(sessionId, getGlobalSessionSnapshot(sessionId), sessionDirectory)
+  let cleanup: () => Promise<void> = async () => {}
   try {
-    await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey, options?.beforeMutation)
+    cleanup = await prepareReviewMetadataCleanup(sessionId, sessionDirectory, expectedRuntimeKey, options?.beforeMutation)
     if (isStaleRuntime(expectedRuntimeKey)) return false
     if (options?.beforeMutation && !options.beforeMutation()) return false
     const deleted = await opencodeClient.deleteSession(sessionId, sessionDirectory)
@@ -1293,6 +1295,7 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
       throw new Error("session.delete failed: server did not confirm deletion")
     }
     finalizeConfirmedSessionDeletion(sessionId, sessionDirectory, expectedRuntimeKey)
+    await cleanup()
     await cleanupDeletedChatDirectory(chatDirectoryCleanup)
     return true
   } catch (error) {
@@ -1304,6 +1307,7 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
     if ((error as { status?: number })?.status === 404) {
       if (isStaleRuntime(expectedRuntimeKey)) return false
       finalizeConfirmedSessionDeletion(sessionId, sessionDirectory, expectedRuntimeKey)
+      await cleanup()
       await cleanupDeletedChatDirectory(chatDirectoryCleanup)
       return true
     }
@@ -1320,7 +1324,7 @@ export async function deleteSessionInDirectory(
   if (isStaleRuntime(expectedRuntimeKey)) return false
   const chatDirectoryCleanup = planChatDirectoryCleanup(sessionId, getGlobalSessionSnapshot(sessionId), directory)
   try {
-    await cleanupReviewMetadataBeforeDelete(sessionId, directory, expectedRuntimeKey)
+    const cleanup = await prepareReviewMetadataCleanup(sessionId, directory, expectedRuntimeKey)
     if (isStaleRuntime(expectedRuntimeKey)) return false
     const deleted = await opencodeClient.deleteSession(sessionId, directory)
     if (isStaleRuntime(expectedRuntimeKey)) return false
@@ -1328,6 +1332,7 @@ export async function deleteSessionInDirectory(
       throw new Error("session.delete failed: server did not confirm deletion")
     }
     finalizeConfirmedSessionDeletion(sessionId, directory, expectedRuntimeKey)
+    await cleanup()
     await cleanupDeletedChatDirectory(chatDirectoryCleanup)
     return true
   } catch (error) {
@@ -1335,6 +1340,7 @@ export async function deleteSessionInDirectory(
     if ((error as { status?: number })?.status === 404) {
       if (isStaleRuntime(expectedRuntimeKey)) return false
       finalizeConfirmedSessionDeletion(sessionId, directory, expectedRuntimeKey)
+      await cleanup()
       await cleanupDeletedChatDirectory(chatDirectoryCleanup)
       return true
     }
@@ -1400,7 +1406,7 @@ export async function archiveSession(
   const sessionDirectory = getSessionDirectory(sessionId)
   const archivedAt = Date.now()
   try {
-    await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey)
+    const cleanup = await prepareReviewMetadataCleanup(sessionId, sessionDirectory, expectedRuntimeKey, beforeMutation)
     if (isStaleRuntime(expectedRuntimeKey)) return false
     if (beforeMutation && !beforeMutation()) return false
     if (!sessionDirectory) throw new Error("archive failed: session directory is unknown")
@@ -1413,6 +1419,7 @@ export async function archiveSession(
     if (!stamp) {
       throw new Error("archive failed: server did not return the archived session")
     }
+    await cleanup()
     const archived = withArchivedAt(sessionId, stamp.archivedAt)
     const snapshots = removeSessionFromLiveStores(sessionId, sessionDirectory)
     invalidateSessionLoads(sessionId, [...snapshots.map((snapshot) => snapshot.directory), sessionDirectory])

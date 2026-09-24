@@ -940,6 +940,17 @@ describe("archiving a batch through the server", () => {
     ])
   })
 
+  test("preserves linked metadata when deletion admission is cancelled", async () => {
+    const review = liveSession("session-review", { openchamber: { kind: "review", originalSessionID: "session-parent" } })
+    globalActiveSessions = [review]
+    const source = createStore({}, { session: [review] })
+    const { deleteSession, setActionRefs } = await import("./session-actions")
+    setActionRefs(createChildStores([["/test/project", source]]), () => "/test/project")
+
+    expect(await deleteSession("session-review", { beforeMutation: () => false })).toBe(false)
+    expect(openchamberRouteRequests.filter((request) => request.path.includes("metadata"))).toEqual([])
+  })
+
   test("does not reconcile a batch answered after a runtime switch", async () => {
     globalActiveSessions = [liveSession("session-a")]
     archiveBatchResponse = {
