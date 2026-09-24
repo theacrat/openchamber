@@ -254,6 +254,10 @@ export const createWebGitHubAPI = ({ urls }: WebGitHubAPIOptions): GitHubAPI => 
     const response = await runtimeFetch(urls.api('/api/github/pr/merge-state', params), { method: 'GET', headers: { Accept: 'application/json' } });
     const body = await jsonOrNull<{ connected: boolean; number: number; url: string; state: 'open' | 'closed' | 'merged'; mergedAt: string | null; error?: string }>(response);
     if (!response.ok || !body) throw new Error(body?.error || response.statusText || 'Failed to load pull request state');
+    if (body.connected !== true) return { connected: false };
+    if (!Number.isInteger(body.number) || typeof body.url !== 'string' || !body.url) {
+      throw new Error('Malformed pull request state response');
+    }
     return body;
   },
 

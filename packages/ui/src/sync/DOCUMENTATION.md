@@ -307,6 +307,11 @@ complete global snapshot and refuses the loader's error/fallback state. A
 runtime switch stops the batch and prevents writing its cooldown into the new
 runtime. Automatic attempts run every five minutes while the app is open;
 manual runs bypass the cooldown and enabled checkbox.
+Automatic policies cover inactive archive, merged-PR archive, prompt restore,
+pin exclusion, and archived-session deletion. Each target is re-read and its
+current policy, age, activity, queue, blocking requests, and hierarchy are
+checked before mutation. Delivery paths persist restore timestamps so a restore
+wins over an older merge observation.
 
 Retention targets unarchived sessions by last activity by default. The opt-in
 `sessionRetentionOnlyArchived` setting switches both the preview and execution

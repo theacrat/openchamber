@@ -350,7 +350,6 @@ export async function runAutomaticSessionRetention({ github }: { github?: GitHub
               ? currentSettings.sessionAutoArchiveOnMerge
               : currentSettings.sessionAutoDeleteArchivedEnabled && currentSettings.sessionAutoDeleteArchivedAfterDays === policy.days;
           if (!enabled) break;
-          if (policy.kind === 'merged' && (!github || !await mergedAfterLastActivity(session, github, mergeReads))) continue;
           if (!currentRuntime()) return result;
         const directory = resolveGlobalSessionDirectory(session);
         if (!directory) {
@@ -361,6 +360,7 @@ export async function runAutomaticSessionRetention({ github }: { github?: GitHub
           if (!currentRuntime()) return result;
           if (fresh.time.updated !== session.time.updated || fresh.time.archived !== session.time.archived
             || (policy.kind === 'merged' && JSON.stringify(linkedPulls(fresh)) !== JSON.stringify(linkedPulls(session)))) continue;
+          if (policy.kind === 'merged' && (!github || !await mergedAfterLastActivity(fresh, github, mergeReads))) continue;
           const latestStatuses = await opencodeClient.getActiveSessionStatuses();
           if (!currentRuntime()) return result;
           if (latestStatuses === null) throw new Error('Session activity could not be confirmed');
