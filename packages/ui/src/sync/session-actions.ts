@@ -1049,6 +1049,7 @@ async function cleanupReviewMetadataBeforeDelete(
   sessionId: string,
   directory?: string | null,
   expectedRuntimeKey?: string,
+  beforeMutation?: () => boolean,
 ): Promise<void> {
   if (isStaleRuntime(expectedRuntimeKey)) return
   let session: Session
@@ -1089,7 +1090,8 @@ async function cleanupReviewMetadataBeforeDelete(
   if (btwSessionID) {
     try {
       if (isStaleRuntime(expectedRuntimeKey)) return
-      await deleteSession(btwSessionID, { expectedRuntimeKey })
+      if (beforeMutation && !beforeMutation()) return
+      await deleteSession(btwSessionID, { expectedRuntimeKey, beforeMutation })
     } catch (error) {
       console.warn("[session-actions] failed to delete btw fork before parent delete", error)
     }
@@ -1285,7 +1287,7 @@ export async function deleteSession(sessionId: string, options?: DeleteSessionOp
   const sessionDirectory = getSessionDirectory(sessionId)
   const chatDirectoryCleanup = planChatDirectoryCleanup(sessionId, getGlobalSessionSnapshot(sessionId), sessionDirectory)
   try {
-    await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey)
+    await cleanupReviewMetadataBeforeDelete(sessionId, sessionDirectory, expectedRuntimeKey, options?.beforeMutation)
     if (isStaleRuntime(expectedRuntimeKey)) return false
     if (options?.beforeMutation && !options.beforeMutation()) return false
     const deleted = await opencodeClient.deleteSession(sessionId, sessionDirectory)
