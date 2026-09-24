@@ -15,6 +15,7 @@ import { createMessageQueueTarget, useMessageQueueStore } from '@/stores/message
 import { useGlobalBlockingRequestsStore } from './global-blocking-requests';
 import { runBackgroundNetworkTask } from '@/lib/background-network';
 import { getPersistedSessionRestoredAt, getSessionRestoredAt } from './session-retention-state';
+import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 
 const DAY_MS = 86_400_000;
 export const RETENTION_KEEP_RECENT = 5;
@@ -258,35 +259,26 @@ const linkedPulls = (session: Session) => getLinkedIssues(session).filter(
 async function mergedAfterLastActivity(
   session: Session,
   github: GitHubAPI,
-  reads: Map<string, Promise<number | null>>,
+  git: ReturnType<typeof useRuntimeAPIs>['git'],
+  reads: Map<string, Promise<boolean>>,
 ): Promise<boolean> {
   const pulls = linkedPulls(session);
   if (pulls.length === 0) return false;
-  let latestMerge = 0;
-  for (const pull of pulls) {
-    if (pull.kind === 'linear') return false;
-    const guestNumber = pull.kind === 'guest' ? Number(pull.identifier) : pull.number;
-    const match = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(pull.url);
-    if (!match || !Number.isSafeInteger(guestNumber) || Number(match[3]) !== guestNumber) return false;
-    let read = reads.get(pull.url);
-    if (!read) {
-      read = runBackgroundNetworkTask(async () => {
-        const context = await github.prMergeState(session.directory, guestNumber, { owner: match[1], repo: match[2] });
-        if (!context.connected || context.state !== 'merged' || context.url !== pull.url
-          || context.number !== guestNumber || !context.mergedAt) return null;
-        const timestamp = Date.parse(context.mergedAt);
-        return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
-      });
-      reads.set(pull.url, read);
-    }
-    const mergedAt = await read;
-    if (mergedAt === null) return false;
-    latestMerge = Math.max(latestMerge, mergedAt);
+  const readKey = `${session.directory}:${session.id}`;
+  let read = reads.get(readKey);
+  if (!read) {
+    read = runBackgroundNetworkTask(async () => {
+      const status = await git.getGitStatus(session.directory, { mode: 'light', fresh: true });
+      if (!status.current) return false;
+      const result = await github.prStatus(session.directory, status.current, undefined, { force: true });
+      return result.pr?.state === 'merged';
+    });
+    reads.set(readKey, read);
   }
-  return Math.max(session.time.updated, getSessionRestoredAt(session.id), getPersistedSessionRestoredAt(session)) <= latestMerge;
+  return await read && getSessionRestoredAt(session.id) === 0 && getPersistedSessionRestoredAt(session) === 0;
 }
 
-export async function runAutomaticSessionRetention({ github }: { github?: GitHubAPI } = {}): Promise<AutomaticRetentionResult> {
+export async function runAutomaticSessionRetention({ github, git }: { github?: GitHubAPI; git?: ReturnType<typeof useRuntimeAPIs>['git'] } = {}): Promise<AutomaticRetentionResult> {
   const result: AutomaticRetentionResult = { archivedIds: [], deletedIds: [], failedIds: [] };
   const policies = automaticPolicies();
   if (policies.length === 0 || useSessionRetentionRunStore.getState().isRunning) return result;
@@ -324,7 +316,7 @@ export async function runAutomaticSessionRetention({ github }: { github?: GitHub
       const parentId = byId.get(id)?.parentID;
       if (parentId) activeSessionIds.add(parentId);
     }
-    const mergeReads = new Map<string, Promise<number | null>>();
+    const mergeReads = new Map<string, Promise<boolean>>();
     const now = Date.now();
     for (const policy of policies) {
       const ids = policy.kind === 'merged'
@@ -360,7 +352,7 @@ export async function runAutomaticSessionRetention({ github }: { github?: GitHub
           if (!currentRuntime()) return result;
           if (fresh.time.updated !== session.time.updated || fresh.time.archived !== session.time.archived
             || (policy.kind === 'merged' && JSON.stringify(linkedPulls(fresh)) !== JSON.stringify(linkedPulls(session)))) continue;
-          if (policy.kind === 'merged' && (!github || !await mergedAfterLastActivity(fresh, github, mergeReads))) continue;
+          if (policy.kind === 'merged' && (!github || !git || !await mergedAfterLastActivity(fresh, github, git, mergeReads))) continue;
           const latestStatuses = await opencodeClient.getActiveSessionStatuses();
           if (!currentRuntime()) return result;
           if (latestStatuses === null) throw new Error('Session activity could not be confirmed');
@@ -373,11 +365,6 @@ export async function runAutomaticSessionRetention({ github }: { github?: GitHub
           if (!stillEnabled) break;
           const current = useGlobalSessionsStore.getState();
           if (current.status !== 'ready' || current.entityById.get(id) !== session) continue;
-          const finalSession = await opencodeClient.getSession(id, directory);
-          if (!currentRuntime()) return result;
-          if (finalSession.time.updated !== fresh.time.updated
-            || finalSession.time.archived !== fresh.time.archived
-            || getPersistedSessionRestoredAt(finalSession) !== getPersistedSessionRestoredAt(fresh)) continue;
           const currentTimestamp = policy.kind === 'archived' ? fresh.time.archived : fresh.time.updated;
           const currentCutoff = policy.kind === 'merged' ? 0 : Date.now() - policy.days * DAY_MS;
           if (policy.kind !== 'merged' && (!currentTimestamp || currentTimestamp >= currentCutoff)) continue;
