@@ -33,7 +33,6 @@ export type MermaidRenderingMode = 'svg' | 'ascii';
 export type UserMessageRenderingMode = 'markdown' | 'plain';
 export type ChatRenderMode = 'sorted' | 'live';
 export type ActivityRenderMode = 'collapsed' | 'summary';
-export type SessionRetentionAction = 'archive' | 'delete';
 export type TimeFormatPreference = 'auto' | '12h' | '24h';
 export type WeekStartPreference = 'auto' | 'sunday' | 'monday';
 export type DesktopWindowControlsPosition = 'left' | 'right';
@@ -883,12 +882,8 @@ interface UIStore {
   chatRenderMode: ChatRenderMode;
   activityRenderMode: ActivityRenderMode;
   showDeletionDialog: boolean;
-  autoDeleteEnabled: boolean;
   /** Global file-editor autosave. Default true for backward compatibility. */
   autoSaveEnabled: boolean;
-  autoDeleteAfterDays: number;
-  sessionRetentionAction: SessionRetentionAction;
-  sessionRetentionOnlyArchived: boolean;
   sessionAutoArchiveOnMerge: boolean;
   sessionAutoArchiveEnabled: boolean;
   sessionAutoArchiveAfterDays: number;
@@ -1115,11 +1110,7 @@ interface UIStore {
   setChatRenderMode: (value: ChatRenderMode) => void;
   setActivityRenderMode: (value: ActivityRenderMode) => void;
   setShowDeletionDialog: (value: boolean) => void;
-  setAutoDeleteEnabled: (value: boolean) => void;
   setAutoSaveEnabled: (value: boolean) => void;
-  setAutoDeleteAfterDays: (days: number) => void;
-  setSessionRetentionAction: (value: SessionRetentionAction) => void;
-  setSessionRetentionOnlyArchived: (value: boolean) => void;
   setSessionAutoArchiveOnMerge: (value: boolean) => void;
   setSessionAutoArchiveEnabled: (value: boolean) => void;
   setSessionAutoArchiveAfterDays: (days: number) => void;
@@ -1315,11 +1306,7 @@ export const useUIStore = create<UIStore>()(
         chatRenderMode: 'live',
         activityRenderMode: 'summary',
         showDeletionDialog: true,
-        autoDeleteEnabled: false,
         autoSaveEnabled: true,
-        autoDeleteAfterDays: 30,
-        sessionRetentionAction: 'archive',
-        sessionRetentionOnlyArchived: false,
         sessionAutoArchiveOnMerge: false,
         sessionAutoArchiveEnabled: false,
         sessionAutoArchiveAfterDays: 30,
@@ -2192,28 +2179,9 @@ export const useUIStore = create<UIStore>()(
           set({ showDeletionDialog: value });
         },
 
-        setAutoDeleteEnabled: (value) => {
-          set({ autoDeleteEnabled: value });
-        },
 
         setAutoSaveEnabled: (value) => {
           set({ autoSaveEnabled: value });
-        },
-
-        setAutoDeleteAfterDays: (days) => {
-          const clampedDays = Math.max(1, Math.min(365, days));
-          set({ autoDeleteAfterDays: clampedDays });
-        },
-
-        setSessionRetentionAction: (value) => {
-          set((state) => ({ sessionRetentionAction: state.sessionRetentionOnlyArchived ? 'delete' : value }));
-        },
-
-        setSessionRetentionOnlyArchived: (value) => {
-          set((state) => ({
-            sessionRetentionOnlyArchived: value,
-            sessionRetentionAction: value ? 'delete' : state.sessionRetentionAction,
-          }));
         },
 
         setSessionAutoArchiveOnMerge: (value) => set({ sessionAutoArchiveOnMerge: value }),
@@ -2896,12 +2864,37 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createDeferredSafeJSONStorage(),
-        version: 21,
+        version: 22,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
           }
           const state = persistedState as Record<string, unknown>;
+
+          // v21 -> v22: replace legacy cleanup controls with independent
+          // policies. Active-session deletion has no safe equivalent.
+          if (version < 22) {
+            const enabled = state.autoDeleteEnabled === true;
+            const archivedOnly = state.sessionRetentionOnlyArchived === true;
+            const days = typeof state.autoDeleteAfterDays === 'number' && Number.isFinite(state.autoDeleteAfterDays)
+              ? Math.max(1, Math.min(365, Math.round(state.autoDeleteAfterDays))) : null;
+            if (days !== null && archivedOnly && state.sessionAutoDeleteArchivedAfterDays === undefined) {
+              state.sessionAutoDeleteArchivedAfterDays = days;
+            } else if (days !== null && !archivedOnly && state.sessionRetentionAction === 'archive'
+              && state.sessionAutoArchiveAfterDays === undefined) {
+              state.sessionAutoArchiveAfterDays = days;
+            }
+            if (enabled && archivedOnly && state.sessionAutoDeleteArchivedEnabled === undefined) {
+              state.sessionAutoDeleteArchivedEnabled = true;
+            } else if (enabled && !archivedOnly && state.sessionRetentionAction === 'archive'
+              && state.sessionAutoArchiveEnabled === undefined) {
+              state.sessionAutoArchiveEnabled = true;
+            }
+            delete state.autoDeleteEnabled;
+            delete state.autoDeleteAfterDays;
+            delete state.sessionRetentionAction;
+            delete state.sessionRetentionOnlyArchived;
+          }
 
           // v20 -> v21: enable telemetry by default; preserve explicit choices.
           if (version < 21 && state.workStatusHiddenSectionsExplicit !== true) {
@@ -3181,11 +3174,7 @@ export const useUIStore = create<UIStore>()(
           chatRenderMode: state.chatRenderMode,
           activityRenderMode: state.activityRenderMode,
           showDeletionDialog: state.showDeletionDialog,
-          autoDeleteEnabled: state.autoDeleteEnabled,
           autoSaveEnabled: state.autoSaveEnabled,
-          autoDeleteAfterDays: state.autoDeleteAfterDays,
-          sessionRetentionAction: state.sessionRetentionAction,
-          sessionRetentionOnlyArchived: state.sessionRetentionOnlyArchived,
           sessionAutoArchiveOnMerge: state.sessionAutoArchiveOnMerge,
           sessionAutoArchiveEnabled: state.sessionAutoArchiveEnabled,
           sessionAutoArchiveAfterDays: state.sessionAutoArchiveAfterDays,

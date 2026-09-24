@@ -6,7 +6,7 @@
 
 ## Caller experience
 
-Settings offers independent switches for archiving after inactivity, archiving sessions whose branch PR has merged, restoring on prompt, excluding pinned sessions, and deleting old archived sessions. Each age policy has its own period. New automatic actions default off. Existing cleanup preferences keep their meaning.
+Settings offers independent switches for archiving after inactivity, archiving sessions whose branch PR has merged, restoring on prompt, excluding pinned sessions, and deleting old archived sessions. Each age policy has its own period. New automatic actions default off.
 
 Automatic checks run while the main application is open, not while every client is closed. The settings explain this boundary. Manual archive, restore, and delete remain available regardless of these preferences.
 
@@ -24,7 +24,7 @@ The settings registry owns these instance preferences:
 | `sessionAutoDeleteArchivedEnabled` | `false` |
 | `sessionAutoDeleteArchivedAfterDays` | `30` |
 
-Periods accept whole days from 1 through 365. The existing legacy cleanup controls remain separate so an upgrade cannot silently enable deletion or change a saved policy.
+Periods accept whole days from 1 through 365. The old cleanup controls are removed. Migration maps an enabled active-session archive to `sessionAutoArchiveEnabled` and its period. It maps an enabled archived-only cleanup to `sessionAutoDeleteArchivedEnabled` and its period. An old active-session delete policy has no safe equivalent and is discarded without enabling deletion. Existing new values always win. The migration removes all old keys and is idempotent.
 
 `session-retention.ts` remains the owner of candidate selection and execution. Policies become named variants rather than combinations of action and archive flags. The main application supplies its runtime GitHub and Git APIs to the runner. The runner returns completed and failed IDs and never converts failed discovery into an empty authoritative result.
 

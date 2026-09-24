@@ -1015,6 +1015,45 @@ export const createSettingsRuntime = (deps) => {
     return { settings: next, changed: true };
   };
 
+  // Replace the pre-policy cleanup controls without widening deletion. An
+  // enabled active-session archive maps to inactive archiving. An enabled
+  // archived-only cleanup maps to archived deletion because that was its only
+  // effective action. Active-session deletion has no safe equivalent and is
+  // removed without enabling any new policy. Explicit new values always win.
+  const migrateLegacyRetentionSettings = (current) => {
+    const settings = current && typeof current === 'object' ? current : {};
+    const next = { ...settings };
+    let changed = false;
+    const enabled = settings.autoDeleteEnabled === true;
+    const days = typeof settings.autoDeleteAfterDays === 'number' && Number.isFinite(settings.autoDeleteAfterDays)
+      ? Math.max(1, Math.min(365, Math.round(settings.autoDeleteAfterDays))) : null;
+    const archivedOnly = settings.sessionRetentionOnlyArchived === true;
+    const action = settings.sessionRetentionAction;
+
+    if (days !== null) {
+      const target = archivedOnly ? 'sessionAutoDeleteArchivedAfterDays'
+        : action === 'archive' ? 'sessionAutoArchiveAfterDays' : null;
+      if (target && next[target] === undefined) {
+        next[target] = days;
+        changed = true;
+      }
+    }
+    if (enabled && archivedOnly && next.sessionAutoDeleteArchivedEnabled === undefined) {
+      next.sessionAutoDeleteArchivedEnabled = true;
+      changed = true;
+    } else if (enabled && !archivedOnly && action === 'archive' && next.sessionAutoArchiveEnabled === undefined) {
+      next.sessionAutoArchiveEnabled = true;
+      changed = true;
+    }
+    for (const key of ['autoDeleteEnabled', 'autoDeleteAfterDays', 'sessionRetentionAction', 'sessionRetentionOnlyArchived']) {
+      if (Object.prototype.hasOwnProperty.call(next, key)) {
+        delete next[key];
+        changed = true;
+      }
+    }
+    return { settings: next, changed };
+  };
+
   let hasCleanedOrphanedTempFiles = false;
 
   const readSettingsFromDiskMigrated = async ({ surface = null } = {}) => {
@@ -1031,12 +1070,13 @@ export const createSettingsRuntime = (deps) => {
     const migration6 = normalizeSettingsPaths(migration5.settings);
     const migration7 = await migrateSettingsToDeterministicProjectIds(migration6.settings);
     const migration8 = migrateSettingsRemoveApprovedDirectories(migration7.settings);
-    if (migration1.changed || migration2.changed || migration3.changed || migration4.changed || migration5.changed || migration6.changed || migration7.changed || migration8.changed) {
-      await writeSettingsToDisk(migration8.settings);
+    const migration9 = migrateLegacyRetentionSettings(migration8.settings);
+    if (migration1.changed || migration2.changed || migration3.changed || migration4.changed || migration5.changed || migration6.changed || migration7.changed || migration8.changed || migration9.changed) {
+      await writeSettingsToDisk(migration9.settings);
     }
     // Migrations run on the base view; a surface asks for its own resolution
     // of the per-surface keys on top of the migrated files.
-    return normalizeSettingsSurface(surface) ? readSettingsFromDisk({ surface }) : migration8.settings;
+    return normalizeSettingsSurface(surface) ? readSettingsFromDisk({ surface }) : migration9.settings;
   };
 
   const persistSettings = async (changes, { surface = null } = {}) => {

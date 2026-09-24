@@ -713,9 +713,9 @@ describe('settings helpers', () => {
         };
         const sanitized = helpers.sanitizeSettingsUpdate(payload);
         expect(sanitized).toEqual(payload);
-        const persisted = helpers.mergePersistedSettings({ autoDeleteEnabled: false }, sanitized);
+        const persisted = helpers.mergePersistedSettings({}, sanitized);
         const response = helpers.formatSettingsResponse(JSON.parse(JSON.stringify(persisted)));
-        expect(response).toMatchObject({ ...payload, autoDeleteEnabled: false });
+        expect(response).toMatchObject(payload);
       }
     });
 
@@ -764,48 +764,6 @@ describe('settings helpers', () => {
       });
     });
 
-    it('round-trips archived-only retention and rejects non-boolean values', () => {
-      const helpers = createTestHelpersWithRealSanitizers();
-      for (const sessionRetentionOnlyArchived of [true, false]) {
-        expect(helpers.sanitizeSettingsUpdate({ sessionRetentionOnlyArchived })).toEqual({ sessionRetentionOnlyArchived });
-      }
-      expect(helpers.sanitizeSettingsUpdate({ sessionRetentionOnlyArchived: 'true' })).toEqual({});
-      expect(helpers.sanitizeSettingsUpdate({ sessionRetentionOnlyArchived: null })).toEqual({});
-    });
-    it('round-trips sessionRetentionAction archive and delete through the sanitizer', () => {
-      const helpers = createTestHelpersWithRealSanitizers();
-
-      expect(helpers.sanitizeSettingsUpdate({ sessionRetentionAction: 'archive' })).toEqual({
-        sessionRetentionAction: 'archive',
-      });
-      expect(helpers.sanitizeSettingsUpdate({ sessionRetentionAction: 'delete' })).toEqual({
-        sessionRetentionAction: 'delete',
-      });
-    });
-
-    it('rejects invalid sessionRetentionAction values', () => {
-      const helpers = createTestHelpersWithRealSanitizers();
-
-      expect(helpers.sanitizeSettingsUpdate({ sessionRetentionAction: 'remove' })).toEqual({});
-      expect(helpers.sanitizeSettingsUpdate({ sessionRetentionAction: true })).toEqual({});
-    });
-
-    it('survives a full settings payload containing sessionRetentionAction (regression)', () => {
-      const helpers = createTestHelpersWithRealSanitizers();
-      const payload = {
-        autoDeleteEnabled: true,
-        autoDeleteAfterDays: 60,
-        sessionRetentionAction: 'delete',
-        sessionRetentionOnlyArchived: true,
-      };
-
-      const sanitized = helpers.sanitizeSettingsUpdate(payload);
-
-      expect(sanitized.autoDeleteEnabled).toBe(true);
-      expect(sanitized.autoDeleteAfterDays).toBe(60);
-      expect(sanitized.sessionRetentionAction).toBe('delete');
-      expect(sanitized.sessionRetentionOnlyArchived).toBe(true);
-    });
   });
 });
 
@@ -830,7 +788,7 @@ describe('settings registry gate', () => {
     desktopUiPassword: 'secret', githubClientId: 'client', githubScopes: 'repo', skillCatalogs: [{ id: 'c', label: 'C', source: 'https://x' }],
     defaultGitIdentityId: 'global', permissionAutoAccept: { sessions: { s: true }, revision: 1 },
     agentControlToolEnabled: true, agentWebToolEnabled: true, browserProvider: 'builtin', agentMemoryToolEnabled: true, agentNotifyToolEnabled: true, openCodeUpdateToastDismissedVersion: '1.0.0',
-    autoDeleteEnabled: true, autoDeleteAfterDays: 30, sessionRetentionOnlyArchived: false, sessionRetentionAction: 'archive', terminalShell: 'zsh', terminalLoginShells: ['zsh'],
+    terminalShell: 'zsh', terminalLoginShells: ['zsh'],
     sessionAutoArchiveOnMerge: true, sessionAutoArchiveEnabled: true, sessionAutoArchiveAfterDays: 14,
     sessionAutoUnarchiveOnPrompt: true, sessionRetentionExcludePinned: false,
     sessionAutoDeleteArchivedEnabled: true, sessionAutoDeleteArchivedAfterDays: 90,
