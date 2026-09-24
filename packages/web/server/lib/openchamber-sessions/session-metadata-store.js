@@ -213,8 +213,8 @@ export const createSessionMetadataStore = ({
     const id = asNonEmptyString(sessionID);
     if (!id) return {};
     await loadLegacy();
-    if (unmigrated.has(id)) return unmigrated.get(id);
-    return (await openCode.read(id, { directory })) ?? {};
+    const upstream = (await openCode.read(id, { directory })) ?? {};
+    return unmigrated.has(id) ? mergeMetadataPatch(upstream, unmigrated.get(id)) : upstream;
   };
 
   /**

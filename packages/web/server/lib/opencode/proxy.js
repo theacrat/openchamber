@@ -12,6 +12,7 @@ import { createRealpathCache } from '../path-realpath-cache.js';
 import { DEFAULT_UPSTREAM_STALL_TIMEOUT_MS } from '../event-stream/upstream-reader.js';
 import { recordStartupPerformance } from './startup-performance.js';
 import { getWorktreeBootstrapStatus } from '../git/service.js';
+import { mergeMetadataPatch } from '../openchamber-sessions/session-metadata-store.js';
 
 const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 20_000;
 
@@ -361,13 +362,15 @@ export const registerOpenCodeProxy = (app, deps) => {
 
   /**
    * A legacy entry is the newest metadata its session has, including {}, so it
-   * replaces the upstream record until migration pushes it there.
+    * overlays the upstream record until migration pushes it there.
    */
   const withStoredMetadata = (session, stored) => {
     if (!session || typeof session !== 'object' || typeof session.id !== 'string') return session;
     const ours = stored[session.id];
     if (!ours || typeof ours !== 'object' || Array.isArray(ours)) return session;
-    return { ...session, metadata: ours };
+    const theirs = session.metadata && typeof session.metadata === 'object' && !Array.isArray(session.metadata)
+      ? session.metadata : {};
+    return { ...session, metadata: mergeMetadataPatch(theirs, ours) };
   };
 
   const overlaySession = (session, archived, stored) => {

@@ -950,7 +950,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Konnte gespeicherte Authentifizierung nicht löschen.',
   'settings.openchamber.sessionRetention.title': 'Sitzungsaufbewahrung',
   'settings.openchamber.sessionRetention.deleteAll.title': 'Alle archivierten Sitzungen löschen',
-  'settings.openchamber.sessionRetention.deleteAll.exclusions': 'Einmaliges Löschen unabhängig vom Alter. Behält ausgewählte, laufende, wartende oder blockierte Sitzungen, Sitzungen mit temporären Gesprächen und Eltern geschützter oder nicht archivierter Sitzungen. Angeheftete Sitzungen behalten gilt ebenfalls. Dies kann nicht rückgängig gemacht werden.',
+  'settings.openchamber.sessionRetention.deleteAll.exclusions': 'Einmaliges Löschen unabhängig vom Alter. Behält ausgewählte, laufende, wartende oder blockierte Sitzungen, Sitzungen mit temporären Gesprächen und Eltern geschützter oder nicht archivierter Sitzungen. Die Einstellung „Angeheftete Sitzungen behalten“ gilt ebenfalls. Dies kann nicht rückgängig gemacht werden.',
   'settings.openchamber.sessionRetention.deleteAll.confirm': 'Löschbare archivierte Sitzungen dieser Instanz: {count}. Zum Schutz ausgeschlossen: {protected}. Bestätigte Sitzungen werden vor dem Löschen erneut geprüft; neu archivierte Sitzungen sind nicht enthalten.',
   'settings.openchamber.sessionRetention.deleteAll.working': 'Sitzungen werden geprüft und die angeforderte Aktion wird ausgeführt…',
   'settings.openchamber.sessionRetention.deleteAll.error': 'Die Aktion konnte nicht abgeschlossen werden. Die Sitzungsermittlung, eine andere Bereinigung oder ein Instanzwechsel hat den Abschluss verhindert. Schließe diesen Dialog und versuche es erneut.',

@@ -399,7 +399,7 @@ const readPersistedSettings = (ctx?: BridgeContext): Record<string, unknown> => 
   const fromGlobalState = stripDerived(
     ctx?.context?.globalState.get<Record<string, unknown>>(SETTINGS_KEY) || {},
   );
-  const fromDisk = migrateLegacyRetentionSettings(stripDerived(readSharedSettingsFromDisk()));
+  const fromDisk = stripDerived(readSharedSettingsFromDisk());
 
   if (!eagerMigrationAttempted) {
     eagerMigrationAttempted = true;
@@ -411,7 +411,9 @@ const readPersistedSettings = (ctx?: BridgeContext): Record<string, unknown> => 
     }
     if (Object.keys(missingFromDisk).length > 0) {
       // Fire-and-forget; readers already have an in-memory merged view.
-      void writeSharedSettingsToDisk({ ...fromDisk, ...missingFromDisk }).catch((error: unknown) => {
+      void writeSharedSettingsToDisk(
+        migrateLegacyRetentionSettings({ ...fromDisk, ...missingFromDisk }),
+      ).catch((error: unknown) => {
         console.warn('[OpenChamber] Failed to migrate settings from globalState:', error instanceof Error ? error.message : String(error));
       });
     }

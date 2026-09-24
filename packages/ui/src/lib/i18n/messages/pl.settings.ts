@@ -967,7 +967,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.field.days': 'dni',
   'settings.openchamber.sessionRetention.title': 'Przechowywanie sesji',
   'settings.openchamber.sessionRetention.deleteAll.title': 'Usuń wszystkie zarchiwizowane sesje',
-  'settings.openchamber.sessionRetention.deleteAll.exclusions': 'Jednorazowe usuwanie niezależnie od wieku. Zachowuje wybraną, działające, kolejkowane lub zablokowane sesje, sesje z tymczasowymi rozmowami oraz rodziców chronionych lub niezarchiwizowanych sesji. Opcja zachowania przypiętych sesji nadal obowiązuje. Tej operacji nie można cofnąć.',
+  'settings.openchamber.sessionRetention.deleteAll.exclusions': 'Jednorazowe usuwanie niezależnie od wieku. Zachowuje wybrane, działające, kolejkowane lub zablokowane sesje, sesje z tymczasowymi rozmowami oraz rodziców chronionych lub niezarchiwizowanych sesji. Opcja zachowania przypiętych sesji nadal obowiązuje. Tej operacji nie można cofnąć.',
   'settings.openchamber.sessionRetention.deleteAll.confirm': 'Kwalifikujące się zarchiwizowane sesje w tej instancji: {count}. Wykluczone dla ochrony: {protected}. Potwierdzone sesje są ponownie sprawdzane przed usunięciem; nowo zarchiwizowane sesje nie są uwzględniane.',
   'settings.openchamber.sessionRetention.deleteAll.working': 'Sprawdzanie sesji i wykonywanie działania…',
   'settings.openchamber.sessionRetention.deleteAll.error': 'Nie udało się zakończyć działania. Zamknij to okno i spróbuj ponownie.',

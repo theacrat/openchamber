@@ -188,15 +188,13 @@ export async function deleteAllArchivedSessions(plan: ArchivedDeletionPlan): Pro
   if (useSessionRetentionRunStore.getState().isRunning) return { ...result, kind: 'running' };
   useSessionRetentionRunStore.setState({ isRunning: true });
   try {
+    let activeIds: ReadonlySet<string>;
+    try {
+      activeIds = await loadArchivedDeletionAuthority(plan);
+    } catch {
+      return { ...result, kind: sameRetentionRuntime(plan) ? 'discovery-failed' : 'runtime-changed' };
+    }
     for (const target of plan.targets) {
-      let activeIds: ReadonlySet<string>;
-      try {
-        // Refresh hierarchy before each deletion: a new descendant must not be
-        // deleted by OpenCode's cascade merely because its parent was confirmed.
-        activeIds = await loadArchivedDeletionAuthority(plan);
-      } catch {
-        return { ...result, kind: sameRetentionRuntime(plan) ? 'discovery-failed' : 'runtime-changed' };
-      }
       const id = target.id;
       const directory = resolveGlobalSessionDirectory(target);
       if (!directory) { result.skippedIds.push(id); continue; }
@@ -402,6 +400,8 @@ export async function runAutomaticSessionRetention({ github, git }: {
             result.failedIds.push(id);
             continue;
           }
+          if (policy.kind === 'merged'
+            && (!github || !git || !await mergedAfterLastActivity(session, github, git, mergeReads))) continue;
           const fresh = await opencodeClient.getSession(id, directory);
           if (!currentRuntime()) return result;
           if (fresh.time.updated !== session.time.updated || fresh.time.archived !== session.time.archived) continue;
