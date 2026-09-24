@@ -94,6 +94,149 @@ export function buildSessionRetentionCandidates({
 // Shared by the app's automatic runner and every Settings mount. Acquire before any await.
 export const useSessionRetentionRunStore = create(() => ({ isRunning: false }));
 
+let retentionRuntimeRevision = 0;
+subscribeRuntimeEndpointWillChange(() => { retentionRuntimeRevision += 1; });
+
+export type ArchivedDeletionPlan = {
+  runtimeKey: string;
+  runtimeRevision: number;
+  targets: Session[];
+  protectedCount: number;
+};
+
+export type ArchivedDeletionPreview =
+  | { kind: 'ready'; plan: ArchivedDeletionPlan }
+  | { kind: 'failure' | 'running' | 'runtime-changed' };
+
+export type DeleteAllArchivedResult = {
+  kind: 'complete' | 'discovery-failed' | 'running' | 'runtime-changed';
+  deletedIds: string[];
+  failedIds: string[];
+  skippedIds: string[];
+};
+
+const sameRetentionRuntime = (owner: Pick<ArchivedDeletionPlan, 'runtimeKey' | 'runtimeRevision'>): boolean => (
+  owner.runtimeKey === getRuntimeKey() && owner.runtimeRevision === retentionRuntimeRevision
+);
+
+async function loadArchivedDeletionAuthority(owner: Pick<ArchivedDeletionPlan, 'runtimeKey' | 'runtimeRevision'>) {
+  await useGlobalSessionsStore.getState().loadSessions();
+  if (!sameRetentionRuntime(owner)) throw new Error('Retention runtime changed');
+  if (useGlobalSessionsStore.getState().status !== 'ready') throw new Error('Incomplete session list');
+  await useMessageQueueStore.getState().hydrate();
+  if (!sameRetentionRuntime(owner)) throw new Error('Retention runtime changed');
+  const statuses = await opencodeClient.getActiveSessionStatuses();
+  if (!sameRetentionRuntime(owner)) throw new Error('Retention runtime changed');
+  if (statuses === null) throw new Error('Session activity unavailable');
+  return new Set(Object.keys(statuses));
+}
+
+const archivedDeletionCandidates = (sessions: readonly Session[], activeIds: ReadonlySet<string>): string[] => {
+  const protectedIds = automaticProtectedIds(sessions);
+  const byId = new Map(sessions.map((session) => [session.id, session]));
+  for (const session of sessions) {
+    if (!isArchived(session) || activeIds.has(session.id)) protectedIds.add(session.id);
+  }
+  // Set iteration visits newly inserted ancestors and terminates even for cycles.
+  for (const id of protectedIds) {
+    const parentId = byId.get(id)?.parentID;
+    if (parentId) protectedIds.add(parentId);
+  }
+  return childFirstIds(sessions, sessions.filter((session) => isArchived(session) && !protectedIds.has(session.id)).map((session) => session.id));
+};
+
+export async function previewArchivedDeletion(): Promise<ArchivedDeletionPreview> {
+  if (useSessionRetentionRunStore.getState().isRunning) return { kind: 'running' };
+  const owner = { runtimeKey: getRuntimeKey(), runtimeRevision: retentionRuntimeRevision };
+  useSessionRetentionRunStore.setState({ isRunning: true });
+  try {
+    const activeIds = await loadArchivedDeletionAuthority(owner);
+    const sessions = [...useGlobalSessionsStore.getState().entityById.values()];
+    const byId = new Map(sessions.map((session) => [session.id, session]));
+    const targets = archivedDeletionCandidates(sessions, activeIds).flatMap((id) => byId.get(id) ?? []);
+    return { kind: 'ready', plan: { ...owner, targets, protectedCount: sessions.filter(isArchived).length - targets.length } };
+  } catch {
+    return { kind: sameRetentionRuntime(owner) ? 'failure' : 'runtime-changed' };
+  } finally {
+    useSessionRetentionRunStore.setState({ isRunning: false });
+  }
+}
+
+const childFirstIds = (sessions: readonly Session[], candidateIds: readonly string[]): string[] => {
+  const byId = new Map(sessions.map((session) => [session.id, session]));
+  const candidates = new Set(candidateIds);
+  const remaining = new Map<string, number>();
+  for (const session of sessions) {
+    if (session.parentID && candidates.has(session.id) && candidates.has(session.parentID)) {
+      remaining.set(session.parentID, (remaining.get(session.parentID) ?? 0) + 1);
+    }
+  }
+  const ordered = candidateIds.filter((id) => !remaining.has(id));
+  for (let index = 0; index < ordered.length; index += 1) {
+    const parentId = byId.get(ordered[index])?.parentID;
+    if (!parentId || !candidates.has(parentId)) continue;
+    const next = (remaining.get(parentId) ?? 0) - 1;
+    remaining.set(parentId, next);
+    if (next === 0) ordered.push(parentId);
+  }
+  return ordered;
+};
+
+export async function deleteAllArchivedSessions(plan: ArchivedDeletionPlan): Promise<DeleteAllArchivedResult> {
+  const result: DeleteAllArchivedResult = { kind: 'complete', deletedIds: [], failedIds: [], skippedIds: [] };
+  if (!sameRetentionRuntime(plan)) return { ...result, kind: 'runtime-changed' };
+  if (useSessionRetentionRunStore.getState().isRunning) return { ...result, kind: 'running' };
+  useSessionRetentionRunStore.setState({ isRunning: true });
+  try {
+    for (const target of plan.targets) {
+      let activeIds: ReadonlySet<string>;
+      try {
+        // Refresh hierarchy before each deletion: a new descendant must not be
+        // deleted by OpenCode's cascade merely because its parent was confirmed.
+        activeIds = await loadArchivedDeletionAuthority(plan);
+      } catch {
+        return { ...result, kind: sameRetentionRuntime(plan) ? 'discovery-failed' : 'runtime-changed' };
+      }
+      const id = target.id;
+      const directory = resolveGlobalSessionDirectory(target);
+      if (!directory) { result.skippedIds.push(id); continue; }
+      try {
+        const fresh = await opencodeClient.getSession(id, directory);
+        const eligible = (): boolean => {
+          if (!sameRetentionRuntime(plan)) return false;
+          const state = useGlobalSessionsStore.getState();
+          const current = state.entityById.get(id);
+          const sessions = [...state.entityById.values()];
+          return state.status === 'ready' && Boolean(current) && isArchived(fresh)
+            && current?.time.archived === target.time.archived && current?.time.updated === target.time.updated
+            && fresh.time.archived === target.time.archived && fresh.time.updated === target.time.updated
+            && resolveGlobalSessionDirectory(current) === directory
+            && !getBtwSessionID(fresh)
+            && archivedDeletionCandidates(sessions, activeIds).includes(id)
+            && !sessions.some((child) => child.parentID === id);
+        };
+        if (!eligible()) { result.skippedIds.push(id); continue; }
+        const restoredAt = getSessionRestoredAt(id);
+        let vetoed = false;
+        const deleted = await deleteSession(id, { expectedRuntimeKey: plan.runtimeKey, beforeMutation: () => {
+          vetoed = !eligible() || getSessionRestoredAt(id) !== restoredAt;
+          return !vetoed;
+        } });
+        if (!sameRetentionRuntime(plan)) return { ...result, kind: 'runtime-changed' };
+        if (vetoed) result.skippedIds.push(id);
+        else if (deleted) result.deletedIds.push(id);
+        else result.failedIds.push(id);
+      } catch {
+        if (!sameRetentionRuntime(plan)) return { ...result, kind: 'runtime-changed' };
+        result.failedIds.push(id);
+      }
+    }
+    return result;
+  } finally {
+    useSessionRetentionRunStore.setState({ isRunning: false });
+  }
+}
+
 type AutomaticRetentionPolicy =
   | { kind: 'inactive'; days: number }
   | { kind: 'merged' }

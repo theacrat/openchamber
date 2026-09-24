@@ -498,6 +498,13 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['retention', 'delete', 'archived', 'days', 'age'],
   },
   {
+    id: 'sessions.delete-all-archived',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.sessionRetention.deleteAll.title',
+    descriptionKey: 'settings.openchamber.sessionRetention.deleteAll.exclusions',
+    keywords: ['retention', 'delete', 'archived', 'all', 'cleanup'],
+  },
+  {
     id: 'sessions.desktop-launch-at-login',
     page: 'general',
     titleKey: 'settings.openchamber.desktopNetwork.field.launchAtLogin',
