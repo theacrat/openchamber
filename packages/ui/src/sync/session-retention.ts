@@ -373,6 +373,11 @@ export async function runAutomaticSessionRetention({ github }: { github?: GitHub
           if (!stillEnabled) break;
           const current = useGlobalSessionsStore.getState();
           if (current.status !== 'ready' || current.entityById.get(id) !== session) continue;
+          const finalSession = await opencodeClient.getSession(id, directory);
+          if (!currentRuntime()) return result;
+          if (finalSession.time.updated !== fresh.time.updated
+            || finalSession.time.archived !== fresh.time.archived
+            || getPersistedSessionRestoredAt(finalSession) !== getPersistedSessionRestoredAt(fresh)) continue;
           const currentTimestamp = policy.kind === 'archived' ? fresh.time.archived : fresh.time.updated;
           const currentCutoff = policy.kind === 'merged' ? 0 : Date.now() - policy.days * DAY_MS;
           if (policy.kind !== 'merged' && (!currentTimestamp || currentTimestamp >= currentCutoff)) continue;

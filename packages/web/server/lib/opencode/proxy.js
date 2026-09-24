@@ -958,7 +958,7 @@ export const registerOpenCodeProxy = (app, deps) => {
       if (settings?.sessionAutoUnarchiveOnPrompt === true) {
         const archived = await readArchivedSessions();
         if (!archived) return res.status(503).json({ error: 'Session archive state is unavailable' });
-        if (archived && typeof archived[req.params.sessionID] === 'number') {
+        if (typeof archived[req.params.sessionID] === 'number') {
           const restored = await unarchiveSession(req.params.sessionID);
           if (!restored) return res.status(409).json({ error: 'Unable to restore archived session before prompt' });
         }

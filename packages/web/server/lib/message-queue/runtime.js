@@ -486,7 +486,11 @@ export function createMessageQueueRuntime({
   const sendItem = async (sessionId, directory, item) => {
     if (readSettingsFromDiskMigrated && isSessionArchived && unarchiveSession) {
       const settings = await readSettingsFromDiskMigrated();
-      if (settings?.sessionAutoUnarchiveOnPrompt && await isSessionArchived(sessionId)) {
+      const archived = settings?.sessionAutoUnarchiveOnPrompt ? await isSessionArchived(sessionId) : false;
+      if (settings?.sessionAutoUnarchiveOnPrompt && archived === null) {
+        throw new Error('Session archive state is unavailable');
+      }
+      if (settings?.sessionAutoUnarchiveOnPrompt && archived === true) {
         const restored = await unarchiveSession(sessionId);
         if (!restored) throw new Error('Unable to restore archived session before queued prompt');
       }

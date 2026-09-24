@@ -49,6 +49,7 @@ The policy owner hides session loading, activity checks, pin protection, merge c
 
 - Inactivity uses session activity time. Archived deletion uses the archive timestamp.
 - Current, running, queued, blocked, shared, and temporary side-conversation sessions stay protected. A successful authoritative active-status read is required before automatic mutation.
+- OpenCode 2.x currently exposes no authoritative shared/public-session field in the session model. Until that upstream contract exists, the runner cannot identify shared sessions safely and does not claim protection based on metadata or URL heuristics.
 - Pin exclusion uses the existing runtime, directory, and session pin identity. Pins are device-local today. The settings must not imply a server-wide pin policy.
 - The five most recent sessions in each age-policy scope remain protected, as with existing cleanup.
 - Merge archiving uses explicitly linked GitHub PR identities, not a branch-name guess or persisted PR cache. All linked PRs must have a confirmed merge timestamp. Guest PR links without an authoritative merge API block this policy.

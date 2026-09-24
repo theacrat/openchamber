@@ -189,7 +189,8 @@ export const createArchiveStore = ({
   };
 
   const getAll = async () => {
-    await load();
+    const result = await load();
+    if (!result.ok) return null;
     return snapshot();
   };
 
@@ -201,7 +202,8 @@ export const createArchiveStore = ({
     isArchived: async (id) => {
       const sessionID = asNonEmptyString(id);
       if (!sessionID) return false;
-      await load();
+      const result = await load();
+      if (!result.ok) return null;
       return typeof entries.get(sessionID) === 'number';
     },
     archivedAt: async (id) => {

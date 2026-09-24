@@ -158,15 +158,7 @@ export async function handleBridgeMessage(message: BridgeRequest, ctx?: BridgeCo
           return settings?.sessionAutoUnarchiveOnPrompt === true;
         },
         restoreArchivedSession: async (sessionId) => {
-          const result = await sessionStateStore.unarchive([sessionId]);
-          if (result.restored.some((session) => session.id === sessionId)) {
-            try {
-              await sessionStateStore.setMetadata(sessionId, { openchamber: { sessionRetentionRestoredAt: Date.now() } }, sessionMetadataOnOpenCode(ctx?.manager));
-            } catch {
-              return false;
-            }
-          }
-          return result.restored.some((session) => session.id === sessionId);
+          return sessionStateStore.restoreForDelivery(sessionId, sessionMetadataOnOpenCode(ctx?.manager));
         },
       },
     );
