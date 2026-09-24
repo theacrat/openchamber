@@ -1010,6 +1010,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.removeFailed': 'Could not remove passkey.',
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Could not clear saved authentication.',
   'settings.openchamber.sessionRetention.title': 'Session Retention',
+  'settings.openchamber.sessionRetention.foregroundBoundary': 'Automatic checks run while OpenChamber is open.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Archive inactive sessions automatically',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Inactive session age',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Archive sessions when linked pull requests merge',

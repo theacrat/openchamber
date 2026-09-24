@@ -962,6 +962,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.removeFailed': 'Konnte Passkey nicht entfernen.',
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Konnte gespeicherte Authentifizierung nicht löschen.',
   'settings.openchamber.sessionRetention.title': 'Sitzungsaufbewahrung',
+  'settings.openchamber.sessionRetention.foregroundBoundary': 'Automatische Prüfungen laufen, solange OpenChamber geöffnet ist.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Inaktive Sitzungen automatisch archivieren',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Alter inaktiver Sitzungen',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Sitzungen archivieren, wenn verknüpfte Pull Requests zusammengeführt werden',

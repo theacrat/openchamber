@@ -1000,6 +1000,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.manualCleanup.eligibleDeleteNow': 'Kwalifikuje się do usunięcia teraz: {count}',
   'settings.openchamber.sessionRetention.manualCleanup.title': 'Ręczne czyszczenie',
   'settings.openchamber.sessionRetention.title': 'Przechowywanie sesji',
+  'settings.openchamber.sessionRetention.foregroundBoundary': 'Automatyczne sprawdzanie działa, gdy OpenChamber jest otwarty.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Automatycznie archiwizuj nieaktywne sesje',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Wiek nieaktywnej sesji',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Archiwizuj sesje po scaleniu powiązanych pull requestów',

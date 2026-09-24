@@ -978,6 +978,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.removeFailed': '无法移除 passkey。',
   'settings.openchamber.passkeys.toast.clearAuthFailed': '无法清除已保存的认证信息。',
   'settings.openchamber.sessionRetention.title': '会话保留',
+  'settings.openchamber.sessionRetention.foregroundBoundary': 'OpenChamber 打开时才会运行自动检查。',
   'settings.openchamber.sessionRetention.field.autoArchive': '自动归档不活跃会话',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': '不活跃会话期限',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': '关联拉取请求合并后归档会话',

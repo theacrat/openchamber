@@ -1607,6 +1607,9 @@ export async function unarchiveSession(sessionId: string, expectedRuntimeKey = g
       throw new Error("unarchive failed: server did not return the restored session")
     }
     markSessionRestored(sessionId)
+    await requestSessionMetadataUpdate(sessionId, {
+      openchamber: { sessionRetentionRestoredAt: Date.now() },
+    }).catch(() => undefined)
     const restored = withArchivedAt(sessionId, null)
     if (restored) useGlobalSessionsStore.getState().upsertSession(restored)
     if (sessionDirectory) registerSessionDirectory(sessionId, sessionDirectory)

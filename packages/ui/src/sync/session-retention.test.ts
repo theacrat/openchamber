@@ -142,7 +142,8 @@ describe('retention execution', () => {
     useUIStore.setState({ sessionAutoArchiveEnabled: true });
     spyOn(opencodeClient, 'getActiveSessionStatuses').mockResolvedValue(null);
     const archive = spyOn(sessionRoutes, 'requestSessionArchiveBatch');
-    await expect(runAutomaticSessionRetention()).rejects.toThrow('authoritative activity');
+    const result = await runAutomaticSessionRetention();
+    expect(result.failedIds).toContain('automatic-old');
     expect(archive.mock.calls).toHaveLength(0);
   });
 
