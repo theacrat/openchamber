@@ -249,6 +249,24 @@ export const createSessionStateStore = ({
       const { applied, failedIds } = await applyArchive(ids, null);
       return { restored: applied.map((id) => ({ id, archivedAt: null })), failedIds };
     },
+    restoreForDelivery: async (sessionID: string, openCode: SessionMetadataOnOpenCode): Promise<boolean> => {
+      const result = await applyArchive([sessionID], null);
+      if (!result.applied.includes(sessionID)) return false;
+      try {
+        await (async () => {
+          const stored = await readMetadata();
+          if (!stored) throw new Error('session metadata is unavailable');
+          const upstream = await openCode.read(sessionID);
+          if (!upstream) throw new Error(`session ${sessionID} was not found`);
+          await openCode.write(sessionID, mergeMetadataPatch(upstream, {
+            openchamber: { sessionRetentionRestoredAt: now() },
+          }));
+        })();
+      } catch {
+        return false;
+      }
+      return true;
+    },
     /** The session's full metadata: a legacy entry laid over OpenCode's record. `{}` for an unknown session. */
     getMetadata: async (sessionID: string, openCode: SessionMetadataOnOpenCode): Promise<SessionMetadata> => {
       const stored = await readMetadata();
