@@ -271,11 +271,15 @@ async function mergedAfterLastActivity(
       const status = await git.getGitStatus(session.directory, { mode: 'light', fresh: true });
       if (!status.current) return false;
       const result = await github.prStatus(session.directory, status.current, undefined, { force: true });
-      return result.pr?.state === 'merged';
+      if (result.pr?.state !== 'merged') return false;
+      const mergedAt = result.pr.mergedAt ? Date.parse(result.pr.mergedAt) : 0;
+      const restoredAt = Math.max(getSessionRestoredAt(session.id), getPersistedSessionRestoredAt(session));
+      if (restoredAt > 0 && (!Number.isFinite(mergedAt) || mergedAt <= restoredAt)) return false;
+      return true;
     });
     reads.set(readKey, read);
   }
-  return await read && getSessionRestoredAt(session.id) === 0 && getPersistedSessionRestoredAt(session) === 0;
+  return await read;
 }
 
 export async function runAutomaticSessionRetention({ github, git }: { github?: GitHubAPI; git?: ReturnType<typeof useRuntimeAPIs>['git'] } = {}): Promise<AutomaticRetentionResult> {
