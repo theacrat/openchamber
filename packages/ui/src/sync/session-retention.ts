@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Session } from "@/lib/opencode/model"
 import { getRuntimeKey, subscribeRuntimeEndpointWillChange } from '@/lib/runtime-switch';
-import { getBtwSessionID } from '@/lib/sessionBtwMetadata';
+import { getBtwSessionID, isBtwSession } from '@/lib/sessionBtwMetadata';
 import { resolveGlobalSessionDirectory, useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from './session-ui-store';
@@ -273,7 +273,7 @@ const automaticProtectedIds = (sessions: readonly Session[]): Set<string> => {
   for (const session of sessions) {
     const directory = resolveGlobalSessionDirectory(session);
     const target = createMessageQueueTarget(session.id, directory);
-    if (!directory || getBtwSessionID(session) || blocking.has(session.id)
+    if (!directory || isBtwSession(session) || getBtwSessionID(session) || blocking.has(session.id)
       || (excludePinned && isSessionPinned(pins, directory, session.id))
       || (target && (queue.getQueueForTarget(target).length > 0
         || (queue.sendingIds[getMessageQueueKey(target)]?.length ?? 0) > 0))) {

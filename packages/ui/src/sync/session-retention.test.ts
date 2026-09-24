@@ -397,6 +397,16 @@ describe('delete all archived sessions', () => {
     expect(remove.mock.calls).toHaveLength(0);
   });
 
+  test('protects temporary side-conversation forks', async () => {
+    const fork = archived('side', { metadata: { openchamber: { kind: 'btw', originalSessionID: 'parent' } } });
+    seed([fork]);
+    spyOn(opencodeClient, 'getActiveSessionStatuses').mockResolvedValue({});
+    const preview = await previewArchivedDeletion();
+    if (preview.kind !== 'ready') throw new Error('expected preview');
+    expect(preview.plan.targets).toEqual([]);
+    expect(preview.plan.protectedCount).toBe(1);
+  });
+
   test('keeps unrelated archived sessions after one deletion fails', async () => {
     const first = archived('first');
     const second = archived('second');
