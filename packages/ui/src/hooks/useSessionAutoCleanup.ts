@@ -19,7 +19,7 @@ const EMPTY_SESSIONS: Session[] = [];
 type CleanupOptions = { autoRun?: boolean; enabled?: boolean };
 
 export const useSessionAutoCleanup = ({ autoRun = true, enabled = true }: CleanupOptions = {}) => {
-  const { github } = useRuntimeAPIs();
+  const { github, git } = useRuntimeAPIs();
   const automaticEnabled = useUIStore((state) => state.sessionAutoArchiveEnabled
     || state.sessionAutoArchiveOnMerge || state.sessionAutoDeleteArchivedEnabled);
   const currentSessionId = useSessionUIStore((state) => state.currentSessionId);
@@ -62,7 +62,7 @@ export const useSessionAutoCleanup = ({ autoRun = true, enabled = true }: Cleanu
     if (!enabled || !autoRun || !automaticEnabled) return;
     const run = () => {
       if (document.visibilityState !== 'visible') return;
-      void runAutomaticSessionRetention({ github }).catch((error) => {
+      void runAutomaticSessionRetention({ github, git }).catch((error) => {
         console.error('[SessionRetention] Automatic cleanup failed', error);
       });
     };
@@ -73,7 +73,7 @@ export const useSessionAutoCleanup = ({ autoRun = true, enabled = true }: Cleanu
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', run);
     };
-  }, [enabled, autoRun, automaticEnabled, github]);
+  }, [enabled, autoRun, automaticEnabled, github, git]);
 
   return {
     candidates,
