@@ -4,7 +4,7 @@ import { handleStandardGitBridgeMessage } from './bridge-git-runtime';
 import { handleSpecialGitBridgeMessage } from './bridge-git-special-runtime';
 import { handleFsBridgeMessage } from './bridge-fs-runtime';
 import { handleConfigBridgeMessage } from './bridge-config-runtime';
-import { handleSystemBridgeMessage } from './bridge-system-runtime';
+import { handleSystemBridgeMessage, sessionMetadataOnOpenCode } from './bridge-system-runtime';
 import { handleProxyBridgeMessage } from './bridge-proxy-runtime';
 import { handlePermissionAutoAcceptBridgeMessage } from './bridge-permission-auto-accept-runtime';
 import { createProjectSetupStore, handleProjectSetupBridgeMessage } from './bridge-project-setup-runtime';
@@ -159,6 +159,13 @@ export async function handleBridgeMessage(message: BridgeRequest, ctx?: BridgeCo
         },
         restoreArchivedSession: async (sessionId) => {
           const result = await sessionStateStore.unarchive([sessionId]);
+          if (result.restored.some((session) => session.id === sessionId)) {
+            try {
+              await sessionStateStore.setMetadata(sessionId, { openchamber: { sessionRetentionRestoredAt: Date.now() } }, sessionMetadataOnOpenCode(ctx?.manager));
+            } catch {
+              return false;
+            }
+          }
           return result.restored.some((session) => session.id === sessionId);
         },
       },

@@ -19,7 +19,7 @@ import type { BridgeContext, BridgeResponse } from './bridge';
 const isSessionNotFound = (error: Error): boolean => error.name === 'SessionNotFoundError';
 
 /** Session metadata on the OpenCode instance this window manages. */
-const sessionMetadataOnOpenCode = (manager: OpenCodeManager | undefined): SessionMetadataOnOpenCode => {
+export const sessionMetadataOnOpenCode = (manager: OpenCodeManager | undefined): SessionMetadataOnOpenCode => {
   const apiUrl = manager?.getApiUrl();
   if (!manager || !apiUrl) throw new Error('OpenCode is not available');
   const client = OpenCode.make({ baseUrl: apiUrl.replace(/\/+$/, ''), headers: manager.getOpenCodeAuthHeaders() });

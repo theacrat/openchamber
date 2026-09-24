@@ -14,3 +14,7 @@ export const getPersistedSessionRestoredAt = (session: { metadata?: unknown }): 
   const restoredAt = (openchamber as { sessionRetentionRestoredAt?: unknown }).sessionRetentionRestoredAt;
   return typeof restoredAt === 'number' && Number.isFinite(restoredAt) ? restoredAt : 0;
 };
+
+export const recordDeliveryRestoredAt = (sessionId: string, restoredAt = Date.now()): void => {
+  markSessionRestored(sessionId, restoredAt);
+};
