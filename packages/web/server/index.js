@@ -994,6 +994,12 @@ const messageQueueRuntime = createMessageQueueRuntime({
   // shared control stream for SSE clients and the existing WS fan-out.
   broadcastGlobalUiEvent: broadcastOpenChamberUiEvent,
   resolveAutoSelection: (send) => routingRuntime.resolveAutoSelection(send),
+  isSessionArchived: (sessionId) => openChamberSessionService.archiveStore.isArchived(sessionId),
+  unarchiveSession: async (sessionId) => {
+    const result = await openChamberSessionService.unarchive({ ids: [sessionId] });
+    return result.restored?.some((session) => session.id === sessionId) === true;
+  },
+  readSettingsFromDiskMigrated,
   onPromptSent: (sessionId) => sessionRuntime.markUserMessageSent(sessionId),
   dataDir: OPENCHAMBER_DATA_DIR,
 });
@@ -1105,6 +1111,11 @@ const serverUtilsRuntime = createServerUtilsRuntime({
   // down, while the proxy is registered later still.
   getArchivedSessions: () => openChamberSessionService.archiveStore.getAll(),
   getStoredSessionMetadata: () => sessionMetadataStore.listUnmigrated(),
+  readSettingsFromDiskMigrated,
+  unarchiveSession: async (sessionId) => {
+    const result = await openChamberSessionService.unarchive({ ids: [sessionId] });
+    return result.restored?.some((session) => session.id === sessionId) === true;
+  },
   fs,
   os,
   path,

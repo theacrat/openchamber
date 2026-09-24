@@ -9,13 +9,19 @@ import {
   RETENTION_KEEP_RECENT,
   runSessionRetentionCleanup,
   useSessionRetentionRunStore,
+  AUTOMATIC_RETENTION_INTERVAL_MS,
+  runAutomaticSessionRetention,
 } from '@/sync/session-retention';
 import { useUIStore } from '@/stores/useUIStore';
+import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 
 const EMPTY_SESSIONS: Session[] = [];
 type CleanupOptions = { autoRun?: boolean; enabled?: boolean };
 
 export const useSessionAutoCleanup = ({ autoRun = true, enabled = true }: CleanupOptions = {}) => {
+  const { github } = useRuntimeAPIs();
+  const automaticEnabled = useUIStore((state) => state.sessionAutoArchiveEnabled
+    || state.sessionAutoArchiveOnMerge || state.sessionAutoDeleteArchivedEnabled);
   const currentSessionId = useSessionUIStore((state) => state.currentSessionId);
   const isLoading = useSessionUIStore((state) => state.isLoading);
   const autoDeleteEnabled = useUIStore((state) => state.autoDeleteEnabled);
@@ -51,6 +57,23 @@ export const useSessionAutoCleanup = ({ autoRun = true, enabled = true }: Cleanu
       console.error('[SessionRetention] Cleanup failed', error);
     });
   }, [enabled, autoRun, autoDeleteEnabled, autoDeleteAfterDays, isLoading, status, isRunning, autoDeleteLastRunAt]);
+
+  React.useEffect(() => {
+    if (!enabled || !autoRun || !automaticEnabled) return;
+    const run = () => {
+      if (document.visibilityState !== 'visible') return;
+      void runAutomaticSessionRetention({ github }).catch((error) => {
+        console.error('[SessionRetention] Automatic cleanup failed', error);
+      });
+    };
+    run();
+    const timer = window.setInterval(run, AUTOMATIC_RETENTION_INTERVAL_MS);
+    document.addEventListener('visibilitychange', run);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', run);
+    };
+  }, [enabled, autoRun, automaticEnabled, github]);
 
   return {
     candidates,

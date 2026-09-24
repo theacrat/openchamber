@@ -664,6 +664,7 @@ export function registerGitHubRoutes(app) {
           headSha: prData.head?.sha,
           mergeable: prData.mergeable,
           mergeableState: prData.mergeable_state,
+          mergedAt: prData.merged_at || null,
         },
         checks,
         canMerge,
@@ -895,6 +896,7 @@ export function registerGitHubRoutes(app) {
         headSha: pr.head?.sha,
         mergeable: pr.mergeable,
         mergeableState: pr.mergeable_state,
+        mergedAt: pr.merged_at || null,
       });
     } catch (error) {
       console.error('Failed to create GitHub PR:', error);
@@ -1459,6 +1461,7 @@ export function registerGitHubRoutes(app) {
           headSha: pr.head?.sha,
           mergeable: pr.mergeable,
           mergeableState: pr.mergeable_state,
+          mergedAt: pr.merged_at || null,
           author: pr.user ? { login: pr.user.login, id: pr.user.id, avatarUrl: pr.user.avatar_url } : null,
           headLabel: pr.head?.label,
           headRepo: headRepo && headRepo.owner && headRepo.repo && headRepo.url
@@ -1625,7 +1628,7 @@ export function registerGitHubRoutes(app) {
           }
         : null;
 
-      const mergedState = prData.merged ? 'merged' : (prData.state === 'closed' ? 'closed' : 'open');
+      const mergedState = prData.merged || prData.merged_at ? 'merged' : (prData.state === 'closed' ? 'closed' : 'open');
       const pr = {
         number: prData.number,
         title: prData.title,
@@ -1635,8 +1638,9 @@ export function registerGitHubRoutes(app) {
         base: prData.base?.ref,
         head: prData.head?.ref,
         headSha: prData.head?.sha,
-        mergeable: prData.mergeable,
-        mergeableState: prData.mergeable_state,
+          mergeable: prData.mergeable,
+          mergeableState: prData.mergeable_state,
+          mergedAt: prData.merged_at || null,
         author: prData.user ? { login: prData.user.login, id: prData.user.id, avatarUrl: prData.user.avatar_url } : null,
         headLabel: prData.head?.label,
         headRepo: headRepo && headRepo.owner && headRepo.repo && headRepo.url ? headRepo : null,

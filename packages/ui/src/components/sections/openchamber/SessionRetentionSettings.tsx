@@ -34,6 +34,20 @@ export const SessionRetentionSettings: React.FC = () => {
   const setAutoDeleteAfterDays = useUIStore((state) => state.setAutoDeleteAfterDays);
   const setSessionRetentionAction = useUIStore((state) => state.setSessionRetentionAction);
   const setOnlyArchived = useUIStore((state) => state.setSessionRetentionOnlyArchived);
+  const autoArchiveEnabled = useUIStore((state) => state.sessionAutoArchiveEnabled);
+  const autoArchiveAfterDays = useUIStore((state) => state.sessionAutoArchiveAfterDays);
+  const autoArchiveOnMerge = useUIStore((state) => state.sessionAutoArchiveOnMerge);
+  const autoUnarchiveOnPrompt = useUIStore((state) => state.sessionAutoUnarchiveOnPrompt);
+  const excludePinned = useUIStore((state) => state.sessionRetentionExcludePinned);
+  const autoDeleteArchivedEnabled = useUIStore((state) => state.sessionAutoDeleteArchivedEnabled);
+  const autoDeleteArchivedAfterDays = useUIStore((state) => state.sessionAutoDeleteArchivedAfterDays);
+  const setAutoArchiveEnabled = useUIStore((state) => state.setSessionAutoArchiveEnabled);
+  const setAutoArchiveAfterDays = useUIStore((state) => state.setSessionAutoArchiveAfterDays);
+  const setAutoArchiveOnMerge = useUIStore((state) => state.setSessionAutoArchiveOnMerge);
+  const setAutoUnarchiveOnPrompt = useUIStore((state) => state.setSessionAutoUnarchiveOnPrompt);
+  const setExcludePinned = useUIStore((state) => state.setSessionRetentionExcludePinned);
+  const setAutoDeleteArchivedEnabled = useUIStore((state) => state.setSessionAutoDeleteArchivedEnabled);
+  const setAutoDeleteArchivedAfterDays = useUIStore((state) => state.setSessionAutoDeleteArchivedAfterDays);
 
   const { candidates, isRunning, runCleanup, action, status } = useSessionAutoCleanup({ autoRun: false });
   const pendingCount = candidates.length;
@@ -83,6 +97,27 @@ export const SessionRetentionSettings: React.FC = () => {
         label={t('settings.openchamber.sessionRetention.field.enableAutoCleanup')}
         ariaLabel={t('settings.openchamber.sessionRetention.field.enableAutoCleanupAria')}
       />
+
+      <SettingsCheckboxRow settingsItem="sessions.auto-archive" checked={autoArchiveEnabled} onChange={setAutoArchiveEnabled}
+        label={t('settings.openchamber.sessionRetention.field.autoArchive')} ariaLabel={t('settings.openchamber.sessionRetention.field.autoArchive')} />
+      <SettingsFieldRow settingsItem="sessions.auto-archive-period" label={t('settings.openchamber.sessionRetention.field.autoArchivePeriod')}>
+        <NumberInput value={autoArchiveAfterDays} onValueChange={setAutoArchiveAfterDays} min={MIN_DAYS} max={MAX_DAYS} step={1}
+          aria-label={t('settings.openchamber.sessionRetention.field.autoArchivePeriod')} className={cn(SETTINGS_NUMBER_INPUT_CLASS, 'tabular-nums')} />
+        <span className="typography-ui-label text-muted-foreground">{t('settings.openchamber.sessionRetention.field.days')}</span>
+      </SettingsFieldRow>
+      <SettingsCheckboxRow settingsItem="sessions.auto-archive-on-merge" checked={autoArchiveOnMerge} onChange={setAutoArchiveOnMerge}
+        label={t('settings.openchamber.sessionRetention.field.autoArchiveOnMerge')} ariaLabel={t('settings.openchamber.sessionRetention.field.autoArchiveOnMerge')} />
+      <SettingsCheckboxRow settingsItem="sessions.auto-unarchive-on-prompt" checked={autoUnarchiveOnPrompt} onChange={setAutoUnarchiveOnPrompt}
+        label={t('settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt')} ariaLabel={t('settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt')} />
+      <SettingsCheckboxRow settingsItem="sessions.retention-exclude-pinned" checked={excludePinned} onChange={setExcludePinned}
+        label={t('settings.openchamber.sessionRetention.field.excludePinned')} ariaLabel={t('settings.openchamber.sessionRetention.field.excludePinned')} />
+      <SettingsCheckboxRow settingsItem="sessions.auto-delete-archived" checked={autoDeleteArchivedEnabled} onChange={setAutoDeleteArchivedEnabled}
+        label={t('settings.openchamber.sessionRetention.field.autoDeleteArchived')} ariaLabel={t('settings.openchamber.sessionRetention.field.autoDeleteArchived')} />
+      <SettingsFieldRow settingsItem="sessions.auto-delete-archived-period" label={t('settings.openchamber.sessionRetention.field.autoDeleteArchivedPeriod')}>
+        <NumberInput value={autoDeleteArchivedAfterDays} onValueChange={setAutoDeleteArchivedAfterDays} min={MIN_DAYS} max={MAX_DAYS} step={1}
+          aria-label={t('settings.openchamber.sessionRetention.field.autoDeleteArchivedPeriod')} className={cn(SETTINGS_NUMBER_INPUT_CLASS, 'tabular-nums')} />
+        <span className="typography-ui-label text-muted-foreground">{t('settings.openchamber.sessionRetention.field.days')}</span>
+      </SettingsFieldRow>
 
       <SettingsInset className="space-y-0">
         <SettingsCheckboxRow

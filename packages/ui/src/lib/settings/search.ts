@@ -463,6 +463,48 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['retention', 'archive', 'delete'],
   },
   {
+    id: 'sessions.auto-archive',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.sessionRetention.field.autoArchive',
+    keywords: ['retention', 'archive', 'inactive', 'automatic'],
+  },
+  {
+    id: 'sessions.auto-archive-period',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.sessionRetention.field.autoArchivePeriod',
+    keywords: ['retention', 'archive', 'days', 'age'],
+  },
+  {
+    id: 'sessions.auto-archive-on-merge',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.sessionRetention.field.autoArchiveOnMerge',
+    keywords: ['retention', 'archive', 'merge', 'pull request'],
+  },
+  {
+    id: 'sessions.auto-unarchive-on-prompt',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt',
+    keywords: ['restore', 'unarchive', 'prompt'],
+  },
+  {
+    id: 'sessions.retention-exclude-pinned',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.sessionRetention.field.excludePinned',
+    keywords: ['retention', 'pinned', 'protect'],
+  },
+  {
+    id: 'sessions.auto-delete-archived',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.sessionRetention.field.autoDeleteArchived',
+    keywords: ['retention', 'delete', 'archived', 'automatic'],
+  },
+  {
+    id: 'sessions.auto-delete-archived-period',
+    page: 'sessions',
+    titleKey: 'settings.openchamber.sessionRetention.field.autoDeleteArchivedPeriod',
+    keywords: ['retention', 'delete', 'archived', 'days', 'age'],
+  },
+  {
     id: 'sessions.retention-only-archived',
     page: 'sessions',
     titleKey: 'settings.openchamber.sessionRetention.field.onlyArchived',

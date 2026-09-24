@@ -149,6 +149,27 @@
     "sessionRetentionAction": {
       "scope": "instance"
     },
+    "sessionAutoArchiveOnMerge": {
+      "scope": "instance"
+    },
+    "sessionAutoArchiveEnabled": {
+      "scope": "instance"
+    },
+    "sessionAutoArchiveAfterDays": {
+      "scope": "instance"
+    },
+    "sessionAutoUnarchiveOnPrompt": {
+      "scope": "instance"
+    },
+    "sessionRetentionExcludePinned": {
+      "scope": "instance"
+    },
+    "sessionAutoDeleteArchivedEnabled": {
+      "scope": "instance"
+    },
+    "sessionAutoDeleteArchivedAfterDays": {
+      "scope": "instance"
+    },
     "terminalShell": {
       "scope": "instance"
     },

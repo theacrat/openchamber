@@ -1823,6 +1823,13 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
 
     // ---- Existing session ----
     const targetSessionId = capturedTarget?.sessionId ?? options?.sessionId ?? get().currentSessionId
+    if (targetSessionId && useUIStore.getState().sessionAutoUnarchiveOnPrompt) {
+      const archived = useGlobalSessionsStore.getState().entityById.get(targetSessionId)
+      if (archived?.time?.archived) {
+        const restored = await unarchiveSessionAction(targetSessionId, capturedRuntimeKey)
+        if (!restored) throw new Error('Unable to restore archived session before sending')
+      }
+    }
     const sessionAgentSelection = targetSessionId
       ? useSelectionStore.getState().getSessionAgentSelection(targetSessionId)
       : null
