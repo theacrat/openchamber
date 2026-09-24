@@ -943,6 +943,7 @@ export type GitHubPullRequest = {
   headSha?: string;
   mergeable?: boolean | null;
   mergeableState?: string | null;
+  mergedAt?: string | null;
 };
 
 type GitHubPullRequestHeadRepo = {

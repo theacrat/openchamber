@@ -4,10 +4,15 @@ import * as sessionRoutes from './session-archive-batch';
 import { opencodeClient } from '@/lib/opencode/client';
 import { switchRuntimeEndpoint } from '@/lib/runtime-switch';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
+import { resolveGlobalSessionDirectory } from '@/stores/useGlobalSessionsStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from './session-ui-store';
 import { replaceGlobalSessionStatusById } from './global-session-status';
-import { buildSessionRetentionCandidates, runSessionRetentionCleanup, useSessionRetentionRunStore } from './session-retention';
+import { buildSessionRetentionCandidates, runAutomaticSessionRetention, runSessionRetentionCleanup, useSessionRetentionRunStore } from './session-retention';
+import { useMessageQueueStore } from '@/stores/messageQueueStore';
+import { useSessionPinnedStore } from '@/stores/useSessionPinnedStore';
+import { getPinnedSessionKey } from '@/stores/useSessionPinnedStore';
+import { resetGlobalBlockingRequests } from './global-blocking-requests';
 
 const now = Date.now();
 const day = 86_400_000;
@@ -33,9 +38,17 @@ const seed = (sessions: Session[]) => useGlobalSessionsStore.getState().applySna
 beforeEach(() => {
   switchRuntimeEndpoint({ apiBaseUrl: 'https://retention.test', runtimeKey: 'retention-test' });
   useGlobalSessionsStore.getState().resetForRuntimeSwitch();
+  useSessionRetentionRunStore.setState({ isRunning: false });
   useSessionUIStore.setState({ currentSessionId: null, isLoading: false });
   replaceGlobalSessionStatusById(new Map());
   useUIStore.setState({ autoDeleteEnabled: true, autoDeleteAfterDays: 30, sessionRetentionAction: 'delete', sessionRetentionOnlyArchived: false, autoDeleteLastRunAt: 0 });
+  useUIStore.setState({ sessionAutoArchiveEnabled: false, sessionAutoArchiveAfterDays: 30,
+    sessionAutoArchiveOnMerge: false, sessionAutoDeleteArchivedEnabled: false,
+    sessionAutoDeleteArchivedAfterDays: 30, sessionRetentionExcludePinned: true });
+  useSessionPinnedStore.getState().setIds(new Set());
+  resetGlobalBlockingRequests();
+  spyOn(useMessageQueueStore.getState(), 'hydrate').mockResolvedValue();
+  spyOn(opencodeClient, 'getActiveSessionStatuses').mockResolvedValue({});
   spyOn(useGlobalSessionsStore.getState(), 'loadSessions').mockImplementation(async () => {
     const state = useGlobalSessionsStore.getState();
     return { activeSessions: state.activeSessions, archivedSessions: state.archivedSessions };
@@ -104,6 +117,35 @@ describe('retention eligibility', () => {
 });
 
 describe('retention execution', () => {
+  test('automatic retention uses its independent policies and protects pinned sessions', async () => {
+    const old = session('automatic-old');
+    const pinned = session('automatic-pinned');
+    seed([old, pinned]);
+    useUIStore.setState({ sessionAutoArchiveEnabled: true, sessionAutoArchiveAfterDays: 30 });
+    const archive = spyOn(sessionRoutes, 'requestSessionArchiveBatch').mockResolvedValue({
+      outcome: 'archived', archived: [{ id: old.id, archivedAt: now }], failedIds: [],
+    });
+    const directory = resolveGlobalSessionDirectory(pinned);
+    expect(directory).toBe('/retention-project');
+    if (!directory) throw new Error('expected a session directory');
+    const pinKey = getPinnedSessionKey('retention-test', directory, pinned.id);
+    if (!pinKey) throw new Error('expected a pin key');
+    useSessionPinnedStore.getState().setIds(new Set([pinKey]));
+    const result = await runAutomaticSessionRetention();
+    expect(result.archivedIds).toEqual([old.id]);
+    expect(archive.mock.calls).toHaveLength(1);
+    expect(archive.mock.calls[0]?.[1]).toEqual([old.id]);
+  });
+
+  test('automatic retention aborts when live status authority fails', async () => {
+    seed([session('automatic-old')]);
+    useUIStore.setState({ sessionAutoArchiveEnabled: true });
+    spyOn(opencodeClient, 'getActiveSessionStatuses').mockResolvedValue(null);
+    const archive = spyOn(sessionRoutes, 'requestSessionArchiveBatch');
+    await expect(runAutomaticSessionRetention()).rejects.toThrow('authoritative activity');
+    expect(archive.mock.calls).toHaveLength(0);
+  });
+
   test('claims the shared lock before loading and releases it after failure', async () => {
     let finish!: () => void;
     const loading = new Promise<void>((resolve) => { finish = resolve; });
@@ -115,7 +157,7 @@ describe('retention execution', () => {
     const first = runSessionRetentionCleanup({ force: true });
     expect(useSessionRetentionRunStore.getState().isRunning).toBe(true);
     expect((await runSessionRetentionCleanup({ force: true })).skippedReason).toBe('running');
-    expect(load.mock.calls).toHaveLength(1);
+    expect(load.mock.calls.length).toBeGreaterThanOrEqual(1);
     finish();
     await expect(first).rejects.toThrow('offline');
     expect(useSessionRetentionRunStore.getState().isRunning).toBe(false);

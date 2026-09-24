@@ -64,6 +64,8 @@ type ProxyRuntimeDeps = {
   sanitizeForwardHeaders: (input: Record<string, string> | undefined) => Record<string, string>;
   collectHeaders: (headers: Headers) => Record<string, string>;
   base64EncodeUtf8: (text: string) => string;
+  restoreArchivedSession?: (sessionId: string) => Promise<boolean>;
+  shouldRestoreArchivedSession?: () => Promise<boolean>;
 };
 
 const proxyAbortControllers = new Map<string, AbortController>();
@@ -284,6 +286,16 @@ export async function handleProxyBridgeMessage(
           bodyBase64: deps.base64EncodeUtf8(body),
         };
         return { id, type, success: true, data };
+      }
+
+      const sessionId = /^\/api\/session\/([^/]+)\/prompt/.exec(normalizedPath)?.[1];
+      if (sessionId && deps.restoreArchivedSession && deps.shouldRestoreArchivedSession
+        && await deps.shouldRestoreArchivedSession()) {
+        const restored = await deps.restoreArchivedSession(sessionId);
+        if (!restored) {
+          const body = JSON.stringify({ error: 'Unable to restore archived session before prompt' });
+          return { id, type, success: true, data: { status: 409, headers: { 'content-type': 'application/json' }, bodyText: body } };
+        }
       }
 
       const base = `${apiUrl.replace(/\/+$/, '')}/`;

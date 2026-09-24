@@ -7,10 +7,18 @@ import { useUIStore, type SessionRetentionAction } from '@/stores/useUIStore';
 import { useSessionUIStore } from './session-ui-store';
 import { useGlobalSessionStatusStore } from './global-session-status';
 import { archiveSession, deleteSession } from './session-actions';
+import { opencodeClient } from '@/lib/opencode/client';
+import type { GitHubAPI } from '@/lib/api/types';
+import { getLinkedIssues } from '@/lib/linkedIssues';
+import { isSessionPinned, useSessionPinnedStore } from '@/stores/useSessionPinnedStore';
+import { createMessageQueueTarget, useMessageQueueStore } from '@/stores/messageQueueStore';
+import { useGlobalBlockingRequestsStore } from './global-blocking-requests';
+import { runBackgroundNetworkTask } from '@/lib/background-network';
 
 const DAY_MS = 86_400_000;
 export const RETENTION_KEEP_RECENT = 5;
 export const RETENTION_INTERVAL_MS = DAY_MS;
+export const AUTOMATIC_RETENTION_INTERVAL_MS = 5 * 60_000;
 
 // A record without timestamps has no age to compare, so it never qualifies.
 const retentionTimestamp = (session: Session, onlyArchived: boolean): number => (
@@ -30,22 +38,25 @@ type CandidateOptions = {
   action: SessionRetentionAction;
   onlyArchived?: boolean;
   activeSessionIds: ReadonlySet<string>;
+  protectedSessionIds?: ReadonlySet<string>;
+  keepRecent?: number;
   now?: number;
 };
 
 /** The unselected scope stays protected, including from cascading parent deletion. */
 export function buildSessionRetentionCandidates({
-  sessions, currentSessionId, cutoffDays, action, onlyArchived = false, activeSessionIds, now = Date.now(),
+  sessions, currentSessionId, cutoffDays, action, onlyArchived = false, activeSessionIds,
+  protectedSessionIds = new Set(), keepRecent = RETENTION_KEEP_RECENT, now = Date.now(),
 }: CandidateOptions): string[] {
   if (!Number.isFinite(cutoffDays) || cutoffDays < 1) return [];
   const cutoff = now - cutoffDays * DAY_MS;
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const sorted = sessions.filter((session) => isArchived(session) === onlyArchived)
     .sort((a, b) => retentionTimestamp(b, onlyArchived) - retentionTimestamp(a, onlyArchived));
-  const protectedIds = new Set(sorted.slice(0, RETENTION_KEEP_RECENT).map((session) => session.id));
+  const protectedIds = new Set(sorted.slice(0, keepRecent).map((session) => session.id));
   for (const session of sessions) {
     if (isArchived(session) !== onlyArchived || getBtwSessionID(session) || session.id === currentSessionId
-      || activeSessionIds.has(session.id) || !isOlderThanCutoff(session, cutoff, onlyArchived)) {
+      || protectedSessionIds.has(session.id) || activeSessionIds.has(session.id) || !isOlderThanCutoff(session, cutoff, onlyArchived)) {
       protectedIds.add(session.id);
     }
   }
@@ -182,6 +193,180 @@ export async function runSessionRetentionCleanup({ force = false } = {}): Promis
     return result;
   } finally {
     if (isCurrentRuntime()) settings.setAutoDeleteLastRunAt(Date.now());
+    unsubscribe();
+    useSessionRetentionRunStore.setState({ isRunning: false });
+  }
+}
+
+type AutomaticRetentionPolicy =
+  | { kind: 'inactive'; days: number }
+  | { kind: 'merged' }
+  | { kind: 'archived'; days: number };
+
+type AutomaticRetentionResult = {
+  archivedIds: string[];
+  deletedIds: string[];
+  failedIds: string[];
+};
+
+const automaticPolicies = (): AutomaticRetentionPolicy[] => {
+  const settings = useUIStore.getState();
+  const policies: AutomaticRetentionPolicy[] = [];
+  if (settings.sessionAutoArchiveEnabled) policies.push({ kind: 'inactive', days: settings.sessionAutoArchiveAfterDays });
+  if (settings.sessionAutoArchiveOnMerge) policies.push({ kind: 'merged' });
+  if (settings.sessionAutoDeleteArchivedEnabled) policies.push({ kind: 'archived', days: settings.sessionAutoDeleteArchivedAfterDays });
+  return policies;
+};
+
+const automaticProtectedIds = (sessions: readonly Session[]): Set<string> => {
+  const protectedIds = new Set(useGlobalSessionStatusStore.getState().activeSessionIds);
+  const selected = useSessionUIStore.getState().currentSessionId;
+  if (selected) protectedIds.add(selected);
+  const pins = useSessionPinnedStore.getState().ids;
+  const excludePinned = useUIStore.getState().sessionRetentionExcludePinned;
+  const blocking = useGlobalBlockingRequestsStore.getState().bySession;
+  const queue = useMessageQueueStore.getState();
+  for (const session of sessions) {
+    const directory = resolveGlobalSessionDirectory(session);
+    const target = createMessageQueueTarget(session.id, directory);
+    if (!directory || getBtwSessionID(session) || blocking.has(session.id)
+      || (excludePinned && isSessionPinned(pins, directory, session.id))
+      || (target && queue.getQueueForTarget(target).length > 0)) {
+      protectedIds.add(session.id);
+    }
+  }
+  const byId = new Map(sessions.map((session) => [session.id, session]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of protectedIds) {
+      const parentId = byId.get(id)?.parentID;
+      if (parentId && !protectedIds.has(parentId)) {
+        protectedIds.add(parentId);
+        changed = true;
+      }
+    }
+  }
+  return protectedIds;
+};
+
+const linkedPulls = (session: Session) => getLinkedIssues(session).filter(
+  (issue) => issue.kind === 'pull' || (issue.kind === 'guest' && issue.thread === 'pull'),
+);
+
+async function mergedAfterLastActivity(
+  session: Session,
+  github: GitHubAPI,
+  reads: Map<string, Promise<number | null>>,
+): Promise<boolean> {
+  const pulls = linkedPulls(session);
+  if (pulls.length === 0) return false;
+  let latestMerge = 0;
+  for (const pull of pulls) {
+    if (pull.kind !== 'pull') return false;
+    const match = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(pull.url);
+    if (!match || Number(match[3]) !== pull.number) return false;
+    let read = reads.get(pull.url);
+    if (!read) {
+      read = runBackgroundNetworkTask(async () => {
+        const context = await github.prContext(session.directory, pull.number, {
+          includeDiff: false, includeCheckDetails: false,
+          sourceRepo: { owner: match[1], repo: match[2] },
+        });
+        if (!context.connected || context.pr?.state !== 'merged' || context.pr.url !== pull.url
+          || context.pr.number !== pull.number || !context.pr.mergedAt) return null;
+        const timestamp = Date.parse(context.pr.mergedAt);
+        return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+      });
+      reads.set(pull.url, read);
+    }
+    const mergedAt = await read;
+    if (mergedAt === null) return false;
+    latestMerge = Math.max(latestMerge, mergedAt);
+  }
+  return session.time.updated <= latestMerge;
+}
+
+export async function runAutomaticSessionRetention({ github }: { github?: GitHubAPI } = {}): Promise<AutomaticRetentionResult> {
+  const result: AutomaticRetentionResult = { archivedIds: [], deletedIds: [], failedIds: [] };
+  const policies = automaticPolicies();
+  if (policies.length === 0 || useSessionRetentionRunStore.getState().isRunning) return result;
+  const runtimeKey = getRuntimeKey();
+  let changed = false;
+  const unsubscribe = subscribeRuntimeEndpointWillChange(() => { changed = true; });
+  const currentRuntime = () => !changed && getRuntimeKey() === runtimeKey;
+  useSessionRetentionRunStore.setState({ isRunning: true });
+  try {
+    await useGlobalSessionsStore.getState().loadSessions();
+    if (!currentRuntime()) return result;
+    if (useGlobalSessionsStore.getState().status !== 'ready') throw new Error('Session retention requires a complete session list');
+    await useMessageQueueStore.getState().hydrate();
+    if (!currentRuntime()) return result;
+    const statuses = await opencodeClient.getActiveSessionStatuses();
+    if (!currentRuntime()) return result;
+    if (statuses === null) throw new Error('Session retention requires an authoritative activity snapshot');
+    const sessions = [...useGlobalSessionsStore.getState().entityById.values()];
+    const activeSessionIds = new Set(Object.keys(statuses));
+    const protectedIds = automaticProtectedIds(sessions);
+    const byId = new Map(sessions.map((session) => [session.id, session]));
+    for (const id of activeSessionIds) {
+      protectedIds.add(id);
+      const parentId = byId.get(id)?.parentID;
+      if (parentId) activeSessionIds.add(parentId);
+    }
+    const mergeReads = new Map<string, Promise<number | null>>();
+    const now = Date.now();
+    for (const policy of policies) {
+      const ids = policy.kind === 'merged'
+        ? sessions.filter((session) => !isArchived(session) && !protectedIds.has(session.id)
+          && !activeSessionIds.has(session.id) && linkedPulls(session).length > 0).map((session) => session.id)
+        : buildSessionRetentionCandidates({
+          sessions, currentSessionId: null, cutoffDays: policy.days,
+          action: policy.kind === 'archived' ? 'delete' : 'archive',
+          onlyArchived: policy.kind === 'archived', activeSessionIds, protectedSessionIds: protectedIds, now,
+        });
+      for (const id of ids) {
+        if (!currentRuntime()) return result;
+        if (!automaticPolicies().some((current) => current.kind === policy.kind
+          && (current.kind === 'merged' || (policy.kind !== 'merged' && current.days === policy.days)))) break;
+        const state = useGlobalSessionsStore.getState();
+        const session = state.entityById.get(id);
+        if (!session || isArchived(session) !== (policy.kind === 'archived')) continue;
+        try {
+          if (policy.kind === 'merged' && (!github || !await mergedAfterLastActivity(session, github, mergeReads))) continue;
+          if (!currentRuntime()) return result;
+        const directory = resolveGlobalSessionDirectory(session);
+        if (!directory) continue;
+        const fresh = await opencodeClient.getSession(id, directory);
+          if (!currentRuntime()) return result;
+          if (fresh.time.updated !== session.time.updated || fresh.time.archived !== session.time.archived
+            || (policy.kind === 'merged' && JSON.stringify(linkedPulls(fresh)) !== JSON.stringify(linkedPulls(session)))) continue;
+          const latestStatuses = await opencodeClient.getActiveSessionStatuses();
+          if (!currentRuntime()) return result;
+          if (latestStatuses === null) throw new Error('Session activity could not be confirmed');
+          const current = useGlobalSessionsStore.getState();
+          if (current.status !== 'ready' || current.entityById.get(id) !== session) continue;
+          if (automaticProtectedIds([...current.entityById.values()]).has(id) || latestStatuses[id]) continue;
+          const liveIds = new Set(Object.keys(latestStatuses));
+          for (const activeId of liveIds) {
+            const parentId = current.entityById.get(activeId)?.parentID;
+            if (parentId) liveIds.add(parentId);
+          }
+          if (liveIds.has(id)) continue;
+          if (policy.kind === 'archived' && [...current.entityById.values()].some((child) => child.parentID === id)) continue;
+          const completed = policy.kind === 'archived'
+            ? await deleteSession(id, { expectedRuntimeKey: runtimeKey })
+            : await archiveSession(id, runtimeKey);
+          if (!completed) result.failedIds.push(id);
+          else if (policy.kind === 'archived') result.deletedIds.push(id);
+          else result.archivedIds.push(id);
+        } catch {
+          result.failedIds.push(id);
+        }
+      }
+    }
+    return result;
+  } finally {
     unsubscribe();
     useSessionRetentionRunStore.setState({ isRunning: false });
   }

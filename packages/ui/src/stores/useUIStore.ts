@@ -889,6 +889,13 @@ interface UIStore {
   autoDeleteAfterDays: number;
   sessionRetentionAction: SessionRetentionAction;
   sessionRetentionOnlyArchived: boolean;
+  sessionAutoArchiveOnMerge: boolean;
+  sessionAutoArchiveEnabled: boolean;
+  sessionAutoArchiveAfterDays: number;
+  sessionAutoUnarchiveOnPrompt: boolean;
+  sessionRetentionExcludePinned: boolean;
+  sessionAutoDeleteArchivedEnabled: boolean;
+  sessionAutoDeleteArchivedAfterDays: number;
   autoDeleteLastRunAt: number | null;
   messageLimit: number;
   fontSize: number;
@@ -1113,6 +1120,13 @@ interface UIStore {
   setAutoDeleteAfterDays: (days: number) => void;
   setSessionRetentionAction: (value: SessionRetentionAction) => void;
   setSessionRetentionOnlyArchived: (value: boolean) => void;
+  setSessionAutoArchiveOnMerge: (value: boolean) => void;
+  setSessionAutoArchiveEnabled: (value: boolean) => void;
+  setSessionAutoArchiveAfterDays: (days: number) => void;
+  setSessionAutoUnarchiveOnPrompt: (value: boolean) => void;
+  setSessionRetentionExcludePinned: (value: boolean) => void;
+  setSessionAutoDeleteArchivedEnabled: (value: boolean) => void;
+  setSessionAutoDeleteArchivedAfterDays: (days: number) => void;
   setAutoDeleteLastRunAt: (timestamp: number | null) => void;
   setMessageLimit: (value: number) => void;
   setFontSize: (size: number) => void;
@@ -1306,6 +1320,13 @@ export const useUIStore = create<UIStore>()(
         autoDeleteAfterDays: 30,
         sessionRetentionAction: 'archive',
         sessionRetentionOnlyArchived: false,
+        sessionAutoArchiveOnMerge: false,
+        sessionAutoArchiveEnabled: false,
+        sessionAutoArchiveAfterDays: 30,
+        sessionAutoUnarchiveOnPrompt: false,
+        sessionRetentionExcludePinned: true,
+        sessionAutoDeleteArchivedEnabled: false,
+        sessionAutoDeleteArchivedAfterDays: 30,
         autoDeleteLastRunAt: null,
         messageLimit: 200,
         fontSize: 100,
@@ -2194,6 +2215,14 @@ export const useUIStore = create<UIStore>()(
             sessionRetentionAction: value ? 'delete' : state.sessionRetentionAction,
           }));
         },
+
+        setSessionAutoArchiveOnMerge: (value) => set({ sessionAutoArchiveOnMerge: value }),
+        setSessionAutoArchiveEnabled: (value) => set({ sessionAutoArchiveEnabled: value }),
+        setSessionAutoArchiveAfterDays: (days) => set({ sessionAutoArchiveAfterDays: Math.max(1, Math.min(365, days)) }),
+        setSessionAutoUnarchiveOnPrompt: (value) => set({ sessionAutoUnarchiveOnPrompt: value }),
+        setSessionRetentionExcludePinned: (value) => set({ sessionRetentionExcludePinned: value }),
+        setSessionAutoDeleteArchivedEnabled: (value) => set({ sessionAutoDeleteArchivedEnabled: value }),
+        setSessionAutoDeleteArchivedAfterDays: (days) => set({ sessionAutoDeleteArchivedAfterDays: Math.max(1, Math.min(365, days)) }),
 
         setAutoDeleteLastRunAt: (timestamp) => {
           set({ autoDeleteLastRunAt: timestamp });
@@ -3157,6 +3186,13 @@ export const useUIStore = create<UIStore>()(
           autoDeleteAfterDays: state.autoDeleteAfterDays,
           sessionRetentionAction: state.sessionRetentionAction,
           sessionRetentionOnlyArchived: state.sessionRetentionOnlyArchived,
+          sessionAutoArchiveOnMerge: state.sessionAutoArchiveOnMerge,
+          sessionAutoArchiveEnabled: state.sessionAutoArchiveEnabled,
+          sessionAutoArchiveAfterDays: state.sessionAutoArchiveAfterDays,
+          sessionAutoUnarchiveOnPrompt: state.sessionAutoUnarchiveOnPrompt,
+          sessionRetentionExcludePinned: state.sessionRetentionExcludePinned,
+          sessionAutoDeleteArchivedEnabled: state.sessionAutoDeleteArchivedEnabled,
+          sessionAutoDeleteArchivedAfterDays: state.sessionAutoDeleteArchivedAfterDays,
           autoDeleteLastRunAt: state.autoDeleteLastRunAt,
           messageLimit: state.messageLimit,
           fontSize: state.fontSize,

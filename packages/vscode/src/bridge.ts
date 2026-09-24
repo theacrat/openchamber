@@ -153,6 +153,14 @@ export async function handleBridgeMessage(message: BridgeRequest, ctx?: BridgeCo
         sanitizeForwardHeaders,
         collectHeaders,
         base64EncodeUtf8,
+        shouldRestoreArchivedSession: async () => {
+          const settings = await readSettings();
+          return settings?.sessionAutoUnarchiveOnPrompt === true;
+        },
+        restoreArchivedSession: async (sessionId) => {
+          const result = await sessionStateStore.unarchive([sessionId]);
+          return result.restored.some((session) => session.id === sessionId);
+        },
       },
     );
     if (proxyResponse) {

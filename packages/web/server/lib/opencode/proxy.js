@@ -307,6 +307,8 @@ export const registerOpenCodeProxy = (app, deps) => {
     // migrated.
     getArchivedSessions = null,
     getStoredSessionMetadata = null,
+    readSettingsFromDiskMigrated = null,
+    unarchiveSession = null,
   } = deps;
 
   /**
@@ -948,6 +950,23 @@ export const registerOpenCodeProxy = (app, deps) => {
     return forwardSseRequest(req, res, next);
   });
   app.get('/api/event', forwardSseRequest);
+
+  app.post('/api/session/:sessionID/prompt', async (req, res, next) => {
+    if (!readSettingsFromDiskMigrated || !unarchiveSession || typeof getArchivedSessions !== 'function') return next();
+    try {
+      const settings = await readSettingsFromDiskMigrated();
+      if (settings?.sessionAutoUnarchiveOnPrompt === true) {
+        const archived = await readArchivedSessions();
+        if (archived && typeof archived[req.params.sessionID] === 'number') {
+          const restored = await unarchiveSession(req.params.sessionID);
+          if (!restored) return res.status(409).json({ error: 'Unable to restore archived session before prompt' });
+        }
+      }
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  });
 
   // Generic proxy for non-SSE OpenCode API routes.
   // The agent is exposed as a getter so its class is resolved per request, not

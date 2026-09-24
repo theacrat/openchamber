@@ -269,6 +269,13 @@ export const SETTINGS_REGISTRY = {
   // Apply scope before action so leaving archived-only mode can restore an incoming archive choice.
   sessionRetentionOnlyArchived: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('sessionRetentionOnlyArchived', (v) => useUIStore.getState().setSessionRetentionOnlyArchived(v)) }),
   sessionRetentionAction: field({ scope: 'instance', parse: parseOneOf(['archive', 'delete']), ui: uiStore('sessionRetentionAction', (v) => useUIStore.getState().setSessionRetentionAction(v)) }),
+  sessionAutoArchiveOnMerge: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('sessionAutoArchiveOnMerge', (v) => useUIStore.getState().setSessionAutoArchiveOnMerge(v)) }),
+  sessionAutoArchiveEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('sessionAutoArchiveEnabled', (v) => useUIStore.getState().setSessionAutoArchiveEnabled(v)) }),
+  sessionAutoArchiveAfterDays: field({ scope: 'instance', parse: parseIntegerInRange(1, 365), ui: uiStore('sessionAutoArchiveAfterDays', (v) => useUIStore.getState().setSessionAutoArchiveAfterDays(v)) }),
+  sessionAutoUnarchiveOnPrompt: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('sessionAutoUnarchiveOnPrompt', (v) => useUIStore.getState().setSessionAutoUnarchiveOnPrompt(v)) }),
+  sessionRetentionExcludePinned: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('sessionRetentionExcludePinned', (v) => useUIStore.getState().setSessionRetentionExcludePinned(v)) }),
+  sessionAutoDeleteArchivedEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('sessionAutoDeleteArchivedEnabled', (v) => useUIStore.getState().setSessionAutoDeleteArchivedEnabled(v)) }),
+  sessionAutoDeleteArchivedAfterDays: field({ scope: 'instance', parse: parseIntegerInRange(1, 365), ui: uiStore('sessionAutoDeleteArchivedAfterDays', (v) => useUIStore.getState().setSessionAutoDeleteArchivedAfterDays(v)) }),
   terminalShell: field({ scope: 'instance', parse: parseTerminalShell, ui: uiStore('terminalShell', (v) => useUIStore.getState().setTerminalShell(v)) }),
   terminalLoginShells: field({ scope: 'instance', parse: parseTerminalShells(isTerminalShell), ui: uiStore('terminalLoginShells', (v) => useUIStore.getState().setTerminalLoginShells(v)) }),
   openInAppId: field({ scope: 'instance', parse: parseNonEmptyTrimmedString }),
