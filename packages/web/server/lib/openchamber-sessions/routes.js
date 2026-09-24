@@ -1,4 +1,6 @@
 import express from 'express';
+import { Session } from '@opencode/schema/session';
+import { SessionMessage } from '@opencode/schema/session-message';
 import {
   createWorktree as createWorktreeDefault,
   getWorktreeBootstrapStatus as getWorktreeBootstrapStatusDefault,
@@ -225,17 +227,52 @@ const applySessionSelection = async ({ client, sessionID, model, agent, variant 
   if (agent) await client.session.switchAgent({ sessionID, agent });
 };
 
-const createSession = async ({ client, directory, title }) => {
-  const session = await client.session.create({
-    location: { directory },
-    ...(title ? { title } : {}),
+const createSession = async ({ client, directory, title, parent }) => {
+  const location = { directory };
+  // The v2 create route cannot set parentID. Import publishes the same Created
+  // event and validates the parent before recording an empty child session.
+  const now = Date.now();
+  const session = parent ? await client.session.import({
+    info: {
+      id: Session.ID.create(),
+      parentID: parent.id,
+      projectID: parent.projectID,
+      location,
+      title: title || undefined,
+      permissions: parent.permissions,
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      time: { created: now, updated: now },
+    },
+    messages: [],
+    location,
+  }) : await client.session.create({
+    location,
+    title: title || undefined,
   });
   const sessionID = asNonEmptyString(session?.id);
   if (!sessionID) throw new Error('failed to create session');
   return sessionID;
 };
 
-const forkSession = async ({ client, sessionID, messageID }) => {
+const forkSession = async ({ client, sessionID, messageID, parentID, directory }) => {
+  if (parentID) {
+    const exported = await client.session.export({ sessionID });
+    const boundary = messageID ? exported.messages.findIndex((message) => message.id === messageID) : exported.messages.length;
+    if (boundary < 0) throw new OpenChamberControlError('Fork boundary message not found', 404);
+    if (exported.messages.length === 0) throw new OpenChamberControlError('Cannot fork an empty session', 400);
+    const info = {
+      ...exported.info,
+      id: Session.ID.create(),
+      parentID,
+      time: { created: Date.now(), updated: Date.now() },
+    };
+    delete info.revert;
+    delete info.outcome;
+    delete info.fork;
+    const messages = exported.messages.slice(0, boundary).map((message) => ({ ...message, id: SessionMessage.ID.create() }));
+    return client.session.import({ info, messages, location: { directory } });
+  }
   const session = await client.session.fork({
     sessionID,
     // OpenCode 2.0.8 replaced the SessionForkBoundary object with an optional
@@ -721,9 +758,32 @@ export const createOpenChamberSessionService = (dependencies) => {
       throw new OpenChamberControlError(parsed.error, 400);
     }
 
-    const { archived, failedIds } = await archiveStore.archive(parsed.ids, parsed.archivedAt);
+    const ids = new Set();
+    const failedRoots = [];
+    const client = clientFor('');
+    for (const rootID of parsed.ids) {
+      const subtree = new Set([rootID]);
+      try {
+        for (const parentID of subtree) {
+          let cursor;
+          do {
+            const page = await client.session.list(cursor ? { cursor } : { parentID });
+            for (const child of page.data) subtree.add(child.id);
+            cursor = page.cursor?.next;
+          } while (cursor);
+        }
+        for (const id of subtree) ids.add(id);
+      } catch {
+        failedRoots.push(rootID);
+      }
+    }
+    const activeIds = [];
+    for (const id of ids) {
+      if (parsed.ids.includes(id) || !await archiveStore.isArchived(id)) activeIds.push(id);
+    }
+    const { archived, failedIds } = await archiveStore.archive(activeIds, parsed.archivedAt);
     for (const entry of archived) broadcastArchived(entry.id, entry.archivedAt);
-    return { archived, failedIds };
+    return { archived, failedIds: [...new Set([...failedRoots, ...failedIds])] };
   };
 
   /** Clears the archive flag for a batch. Mirrors `archive`. */
@@ -738,7 +798,7 @@ export const createOpenChamberSessionService = (dependencies) => {
     return { restored, failedIds };
   };
 
-  const create = async (payload = {}) => {
+  const create = async (payload = {}, { parentID } = {}) => {
     const title = asNonEmptyString(payload.title);
     const prompt = asNonEmptyString(payload.prompt);
     const goalInput = resolveGoalInput(payload, prompt);
@@ -768,6 +828,8 @@ export const createOpenChamberSessionService = (dependencies) => {
 
     if (typeof waitForOpenCodeReady === 'function') await waitForOpenCodeReady(10_000, 250);
 
+    const parent = parentID ? await clientFor(resolvedDirectory.directory).session.get({ sessionID: parentID }) : null;
+
     if (prompt) {
       await validateRequestedSelection({
         directory: resolvedDirectory.directory,
@@ -789,6 +851,7 @@ export const createOpenChamberSessionService = (dependencies) => {
     const sessionID = await createSession({
       client,
       directory: sessionDirectory,
+      parent,
       ...(title ? { title } : {}),
     });
 
@@ -847,7 +910,7 @@ export const createOpenChamberSessionService = (dependencies) => {
     return result;
   };
 
-  const runExisting = async (action, sourceSessionId, payload = {}) => {
+  const runExisting = async (action, sourceSessionId, payload = {}, { parentID } = {}) => {
     const sourceSessionID = asNonEmptyString(sourceSessionId);
     const prompt = asNonEmptyString(payload.prompt);
     if (!sourceSessionID) throw new OpenChamberControlError('sessionId is required', 400);
@@ -887,6 +950,8 @@ export const createOpenChamberSessionService = (dependencies) => {
           client,
           sessionID: sourceSessionID,
           messageID: asNonEmptyString(payload.messageId) || undefined,
+          parentID,
+          directory,
         });
         targetSessionID = targetSession.id;
       }
@@ -977,7 +1042,7 @@ export const createOpenChamberSessionService = (dependencies) => {
     setMetadata,
     getMetadata,
     send: (sessionID, payload) => runExisting('send', sessionID, payload),
-    fork: (sessionID, payload) => runExisting('fork', sessionID, payload),
+    fork: (sessionID, payload, options) => runExisting('fork', sessionID, payload, options),
   };
 };
 

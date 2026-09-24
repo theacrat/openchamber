@@ -53,7 +53,7 @@ import {
   applySessionEventsToGlobalSessions,
 } from "./session-event-router"
 import { shouldConsumeBulkArchiveEcho } from "./bulk-archive-echo"
-import { selectNewChildSessions } from "./child-session-discovery"
+import { childSessionsInDirectory, newlyDiscoveredChildParents, selectNewChildSessions } from "./child-session-discovery"
 import { syncDebug } from "./debug"
 import { getReconnectCandidateSessionIds, mergeBootstrapSessions } from "./reconnect-recovery"
 import { messagesBefore } from "./message-ordering"
@@ -2622,8 +2622,11 @@ export function SyncProvider(props: {
         // discovered; a single 200-record page silently truncated the list and
         // left subagent children beyond it undiscovered.
         const { active: allSessions } = splitGlobalSessionsByArchived(
-          await listGlobalSessionPages(listSessionPage, { directory, pageSize: 200 }),
+          (await Promise.all(parentSessionIds.map((parentID) =>
+            listGlobalSessionPages((options) => listSessionPage({ ...options, parentID }), { pageSize: 200 })
+          ))).flat(),
         )
+        if (stopped || getRuntimeKey() !== runtimeKey) return
         const state = store.getState()
         const globalEntities = useGlobalSessionsStore.getState().entityById
         const newChildSessions = selectNewChildSessions(
@@ -2633,13 +2636,16 @@ export function SyncProvider(props: {
           (sessionId) => Boolean(globalEntities.get(sessionId)?.time?.archived),
         )
         if (newChildSessions.length === 0) return
-        // Collect unique parent IDs for materialization
-        const parentIdsForMaterialization = new Set<string>()
+        const parentIdsForMaterialization = newlyDiscoveredChildParents(newChildSessions, globalEntities)
         for (const session of newChildSessions) {
-          if (session.parentID) parentIdsForMaterialization.add(session.parentID)
+          if (globalEntities.get(session.id)?.parentID !== session.parentID) {
+            useGlobalSessionsStore.getState().upsertSession(session)
+          }
         }
-        store.setState((state: DirectoryStore) => {
-          const sessions = [...state.session, ...newChildSessions].sort((a, b) =>
+        // Collect unique parent IDs for materialization
+        const localChildren = childSessionsInDirectory(newChildSessions, directory)
+        if (localChildren.length > 0) store.setState((state: DirectoryStore) => {
+          const sessions = [...state.session, ...localChildren].sort((a, b) =>
             a.id < b.id ? -1 : a.id > b.id ? 1 : 0
           )
           return { session: sessions, limit: Math.max(sessions.length, 50) }
@@ -2731,7 +2737,7 @@ export function SyncProvider(props: {
       stopped = true
       clearInterval(interval)
     }
-  }, [childStores, props.sdk, triggerDirectoryResync])
+  }, [childStores, props.sdk, triggerDirectoryResync, runtimeKey])
 
   // Ensure current directory's child store exists
   useEffect(() => {
