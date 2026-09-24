@@ -68,15 +68,61 @@ describe('settings runtime', () => {
     }
   });
 
-  it('round-trips both archived-only retention states through instance settings', async () => {
+  it('migrates compatible legacy retention intent without enabling active deletion', async () => {
     const { runtime, settingsFilePath, cleanup } = await createRuntime();
     try {
-      for (const sessionRetentionOnlyArchived of [true, false]) {
-        const settings = { sessionRetentionOnlyArchived, sessionRetentionAction: 'delete', autoDeleteAfterDays: 30 };
-        await runtime.persistSettings(settings);
-        expect(await runtime.readSettingsFromDisk()).toEqual(settings);
-        expect(JSON.parse(await fsPromises.readFile(settingsFilePath, 'utf8'))).toEqual(settings);
-      }
+      await fsPromises.writeFile(settingsFilePath, JSON.stringify({
+        autoDeleteEnabled: true, autoDeleteAfterDays: 14, sessionRetentionAction: 'archive',
+      }));
+      await expect(runtime.readSettingsFromDiskMigrated()).resolves.toMatchObject({
+        sessionAutoArchiveEnabled: true, sessionAutoArchiveAfterDays: 14,
+      });
+      const migrated = await runtime.readSettingsFromDisk();
+      expect(migrated.autoDeleteEnabled).toBeUndefined();
+      expect(migrated.sessionRetentionAction).toBeUndefined();
+      await expect(runtime.readSettingsFromDiskMigrated()).resolves.toMatchObject({
+        sessionAutoArchiveEnabled: true, sessionAutoArchiveAfterDays: 14,
+      });
+      const repeat = JSON.parse(await fsPromises.readFile(settingsFilePath, 'utf8'));
+      expect(repeat.sessionAutoDeleteArchivedEnabled).toBeUndefined();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('maps archived-only cleanup to archived deletion and keeps explicit new values', async () => {
+    const { runtime, settingsFilePath, cleanup } = await createRuntime();
+    try {
+      await fsPromises.writeFile(settingsFilePath, JSON.stringify({
+        autoDeleteEnabled: true,
+        autoDeleteAfterDays: 21,
+        sessionRetentionAction: 'delete',
+        sessionRetentionOnlyArchived: true,
+        sessionAutoDeleteArchivedEnabled: false,
+        sessionAutoDeleteArchivedAfterDays: 90,
+      }));
+      await expect(runtime.readSettingsFromDiskMigrated()).resolves.toMatchObject({
+        sessionAutoDeleteArchivedEnabled: false,
+        sessionAutoDeleteArchivedAfterDays: 90,
+      });
+      const migrated = await runtime.readSettingsFromDisk();
+      expect(migrated.autoDeleteEnabled).toBeUndefined();
+      expect(migrated.sessionRetentionOnlyArchived).toBeUndefined();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('drops legacy active-session deletion without enabling an automatic policy', async () => {
+    const { runtime, settingsFilePath, cleanup } = await createRuntime();
+    try {
+      await fsPromises.writeFile(settingsFilePath, JSON.stringify({
+        autoDeleteEnabled: true, autoDeleteAfterDays: 21, sessionRetentionAction: 'delete',
+      }));
+      const migrated = await runtime.readSettingsFromDiskMigrated();
+      expect(migrated.sessionAutoArchiveEnabled).toBeUndefined();
+      expect(migrated.sessionAutoDeleteArchivedEnabled).toBeUndefined();
+      expect(migrated.autoDeleteEnabled).toBeUndefined();
     } finally {
       await cleanup();
     }

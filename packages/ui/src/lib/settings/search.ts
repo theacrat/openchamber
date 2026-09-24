@@ -456,13 +456,6 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['walkthrough', 'diff', 'review', 'changes', 'structured output', 'model', 'override'],
   },
   {
-    id: 'sessions.auto-cleanup',
-    page: 'sessions',
-    titleKey: 'settings.openchamber.sessionRetention.field.enableAutoCleanup',
-    descriptionKey: 'settings.openchamber.sessionRetention.tooltip',
-    keywords: ['retention', 'archive', 'delete'],
-  },
-  {
     id: 'sessions.auto-archive',
     page: 'sessions',
     titleKey: 'settings.openchamber.sessionRetention.field.autoArchive',
@@ -503,25 +496,6 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     page: 'sessions',
     titleKey: 'settings.openchamber.sessionRetention.field.autoDeleteArchivedPeriod',
     keywords: ['retention', 'delete', 'archived', 'days', 'age'],
-  },
-  {
-    id: 'sessions.retention-only-archived',
-    page: 'sessions',
-    titleKey: 'settings.openchamber.sessionRetention.field.onlyArchived',
-    descriptionKey: 'settings.openchamber.sessionRetention.field.onlyArchivedDescription',
-    keywords: ['archive', 'archived', 'only', 'delete', 'cleanup', 'retention'],
-  },
-  {
-    id: 'sessions.retention-period',
-    page: 'sessions',
-    titleKey: 'settings.openchamber.sessionRetention.field.retentionPeriod',
-    keywords: ['days', 'cleanup', 'retention'],
-  },
-  {
-    id: 'sessions.retention-action',
-    page: 'sessions',
-    titleKey: 'settings.openchamber.sessionRetention.field.whenSessionsExpire',
-    keywords: ['archive', 'delete', 'expire'],
   },
   {
     id: 'sessions.desktop-launch-at-login',

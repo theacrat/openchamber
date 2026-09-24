@@ -304,10 +304,8 @@ explicit lifecycle edge; the store coalesces an overlapping in-flight load.
 `useSessionAutoCleanup.ts` connects it to the app and Settings. Manual and
 automatic runs share a lock acquired before loading. Each run requests a fresh
 complete global snapshot and refuses the loader's error/fallback state. A
-runtime switch stops the batch and prevents writing its cooldown into the new
-runtime. Legacy cleanup has a daily cooldown; manual runs bypass that cooldown
-and its enabled checkbox. The newer automatic policies check on mount, when the
-app becomes visible, and every five minutes while visible.
+runtime switch stops the batch. The independent automatic policies check on
+mount, when the app becomes visible, and every five minutes while visible.
 Automatic policies cover inactive archive, merged-PR archive, prompt restore,
 pin exclusion, and archived-session deletion. Each target is re-read and its
 current policy, age, activity, queue, blocking requests, and hierarchy are
@@ -323,12 +321,12 @@ and archive/delete requests are separate operations. A concurrent prompt or
 another client's mutation can still race the final request. The shared lock
 serializes retention runs within one client, not across clients or delivery owners.
 
-Retention targets unarchived sessions by last activity by default. The opt-in
-`sessionRetentionOnlyArchived` setting switches both the preview and execution
-to archived sessions and measures their retention period from `time.archived`.
-It forces Delete in the store and cleanup runner; Archive is disabled in Settings.
-Turning it off leaves Delete selected and makes Archive available again. The
-setting uses the instance settings registry across web, desktop, VS Code and mobile.
+The independent policies use their own scope and age fields. Inactive archiving
+uses active sessions and `time.updated`. Archived deletion uses archived sessions
+and `time.archived`. Merge archiving and prompt restoration remain separate
+policies. The settings use the instance registry across web, desktop, VS Code and
+mobile. Legacy active-session deletion has no equivalent and is discarded during
+migration rather than broadened into archived deletion.
 
 Both modes preserve the five most recent sessions in the selected scope, ranked
 by that scope's retention timestamp, plus the selected session

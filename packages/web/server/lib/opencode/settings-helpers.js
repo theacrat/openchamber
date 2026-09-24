@@ -471,19 +471,6 @@ export const createSettingsHelpers = (dependencies) => {
     if (Array.isArray(candidate.usageDropdownProviders)) {
       result.usageDropdownProviders = normalizeStringArray(candidate.usageDropdownProviders);
     }
-    if (typeof candidate.autoDeleteEnabled === 'boolean') {
-      result.autoDeleteEnabled = candidate.autoDeleteEnabled;
-    }
-    if (typeof candidate.autoDeleteAfterDays === 'number' && Number.isFinite(candidate.autoDeleteAfterDays)) {
-      const normalizedDays = Math.max(1, Math.min(365, Math.round(candidate.autoDeleteAfterDays)));
-      result.autoDeleteAfterDays = normalizedDays;
-    }
-    if (candidate.sessionRetentionAction === 'archive' || candidate.sessionRetentionAction === 'delete') {
-      result.sessionRetentionAction = candidate.sessionRetentionAction;
-    }
-    if (typeof candidate.sessionRetentionOnlyArchived === 'boolean') {
-      result.sessionRetentionOnlyArchived = candidate.sessionRetentionOnlyArchived;
-    }
     for (const key of [
       'sessionAutoArchiveOnMerge',
       'sessionAutoArchiveEnabled',

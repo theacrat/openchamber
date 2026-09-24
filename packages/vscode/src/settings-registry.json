@@ -137,18 +137,6 @@
     "openCodeUpdateToastDismissedVersion": {
       "scope": "instance"
     },
-    "autoDeleteEnabled": {
-      "scope": "instance"
-    },
-    "autoDeleteAfterDays": {
-      "scope": "instance"
-    },
-    "sessionRetentionOnlyArchived": {
-      "scope": "instance"
-    },
-    "sessionRetentionAction": {
-      "scope": "instance"
-    },
     "sessionAutoArchiveOnMerge": {
       "scope": "instance"
     },

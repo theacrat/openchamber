@@ -3,7 +3,7 @@ import type { Session } from "@/lib/opencode/model"
 import { getRuntimeKey, subscribeRuntimeEndpointWillChange } from '@/lib/runtime-switch';
 import { getBtwSessionID } from '@/lib/sessionBtwMetadata';
 import { resolveGlobalSessionDirectory, useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
-import { useUIStore, type SessionRetentionAction } from '@/stores/useUIStore';
+import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from './session-ui-store';
 import { useGlobalSessionStatusStore } from './global-session-status';
 import { archiveSession, deleteSession } from './session-actions';
@@ -18,7 +18,6 @@ import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 
 const DAY_MS = 86_400_000;
 export const RETENTION_KEEP_RECENT = 5;
-export const RETENTION_INTERVAL_MS = DAY_MS;
 export const AUTOMATIC_RETENTION_INTERVAL_MS = 5 * 60_000;
 
 // A record without timestamps has no age to compare, so it never qualifies.
@@ -36,7 +35,7 @@ type CandidateOptions = {
   sessions: readonly Session[];
   currentSessionId: string | null;
   cutoffDays: number;
-  action: SessionRetentionAction;
+  action: 'archive' | 'delete';
   onlyArchived?: boolean;
   activeSessionIds: ReadonlySet<string>;
   protectedSessionIds?: ReadonlySet<string>;
@@ -92,112 +91,8 @@ export function buildSessionRetentionCandidates({
   return ordered;
 }
 
-type SessionRetentionResult = {
-  completedIds: string[];
-  failedIds: string[];
-  action: SessionRetentionAction;
-  skippedReason?: 'disabled' | 'loading' | 'cooldown' | 'no-candidates' | 'running' | 'runtime-changed';
-};
-
 // Shared by the app's automatic runner and every Settings mount. Acquire before any await.
 export const useSessionRetentionRunStore = create(() => ({ isRunning: false }));
-
-export async function runSessionRetentionCleanup({ force = false } = {}): Promise<SessionRetentionResult> {
-  const settings = useUIStore.getState();
-  const onlyArchived = settings.sessionRetentionOnlyArchived;
-  const action = onlyArchived ? 'delete' : settings.sessionRetentionAction;
-  const result: SessionRetentionResult = { completedIds: [], failedIds: [], action };
-  if (useSessionRetentionRunStore.getState().isRunning) return { ...result, skippedReason: 'running' };
-  if (!Number.isFinite(settings.autoDeleteAfterDays) || settings.autoDeleteAfterDays < 1
-    || (!force && !settings.autoDeleteEnabled)) return { ...result, skippedReason: 'disabled' };
-  if (!force && useSessionUIStore.getState().isLoading) return { ...result, skippedReason: 'loading' };
-  const now = Date.now();
-  if (!force && settings.autoDeleteLastRunAt && now - settings.autoDeleteLastRunAt < RETENTION_INTERVAL_MS) {
-    return { ...result, skippedReason: 'cooldown' };
-  }
-
-  const runtimeKey = getRuntimeKey();
-  let runtimeChanged = false;
-  const unsubscribe = subscribeRuntimeEndpointWillChange(() => { runtimeChanged = true; });
-  const isCurrentRuntime = () => !runtimeChanged && getRuntimeKey() === runtimeKey;
-  useSessionRetentionRunStore.setState({ isRunning: true });
-  try {
-    await useGlobalSessionsStore.getState().loadSessions();
-    if (!isCurrentRuntime()) return { ...result, skippedReason: 'runtime-changed' };
-    if (useGlobalSessionsStore.getState().status !== 'ready') {
-      throw new Error('Session retention requires a complete session list');
-    }
-    const candidateIds = buildSessionRetentionCandidates({
-      sessions: [...useGlobalSessionsStore.getState().entityById.values()],
-      currentSessionId: useSessionUIStore.getState().currentSessionId,
-      cutoffDays: settings.autoDeleteAfterDays,
-      action,
-      onlyArchived,
-      activeSessionIds: useGlobalSessionStatusStore.getState().activeSessionIds,
-      now,
-    });
-    if (candidateIds.length === 0) return { ...result, skippedReason: 'no-candidates' };
-
-    const failedIds = new Set<string>();
-    let archivedSnapshot: readonly Session[] | undefined;
-    let archivedChildrenByParentId = new Map<string, string[]>();
-    for (const [index, id] of candidateIds.entries()) {
-      if (!isCurrentRuntime()) {
-        result.failedIds.push(...candidateIds.slice(index));
-        break;
-      }
-      const state = useGlobalSessionsStore.getState();
-      const session = state.entityById.get(id);
-      if (!session) continue;
-      if (isArchived(session) !== onlyArchived || getBtwSessionID(session) || session.id === useSessionUIStore.getState().currentSessionId
-        || useGlobalSessionStatusStore.getState().activeSessionIds.has(id)
-        || !isOlderThanCutoff(session, now - settings.autoDeleteAfterDays * DAY_MS, onlyArchived)) continue;
-      if (action === 'delete') {
-        if (archivedSnapshot !== state.archivedSessions) {
-          archivedSnapshot = state.archivedSessions;
-          archivedChildrenByParentId = new Map();
-          for (const archived of archivedSnapshot) {
-            if (!archived.parentID) continue;
-            const children = archivedChildrenByParentId.get(archived.parentID);
-            if (children) children.push(archived.id);
-            else archivedChildrenByParentId.set(archived.parentID, [archived.id]);
-          }
-        }
-        // Planned children ran first. Any child still present either failed,
-        // became protected, or arrived mid-run. Never delete it via its parent.
-        const children = [
-          ...(state.structure.activeChildrenByParentId.get(id) ?? []),
-          ...(archivedChildrenByParentId.get(id) ?? []),
-        ];
-        if (children.length > 0) {
-          if (children.some((childId) => failedIds.has(childId))) {
-            failedIds.add(id);
-            result.failedIds.push(id);
-          }
-          continue;
-        }
-      }
-      if (!resolveGlobalSessionDirectory(session)) {
-        failedIds.add(id);
-        result.failedIds.push(id);
-        continue;
-      }
-      const completed = action === 'archive'
-        ? await archiveSession(id, runtimeKey)
-        : await deleteSession(id, { expectedRuntimeKey: runtimeKey });
-      if (completed) result.completedIds.push(id);
-      else {
-        failedIds.add(id);
-        result.failedIds.push(id);
-      }
-    }
-    return result;
-  } finally {
-    if (isCurrentRuntime()) settings.setAutoDeleteLastRunAt(Date.now());
-    unsubscribe();
-    useSessionRetentionRunStore.setState({ isRunning: false });
-  }
-}
 
 type AutomaticRetentionPolicy =
   | { kind: 'inactive'; days: number }
