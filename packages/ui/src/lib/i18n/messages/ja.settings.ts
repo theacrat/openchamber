@@ -1001,7 +1001,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': '自動チェックは OpenChamber が開いている間に実行されます。',
   'settings.openchamber.sessionRetention.field.autoArchive': '非アクティブなセッションを自動アーカイブ',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': '非アクティブなセッションの経過日数',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'リンクしたプルリクエストのマージ時にアーカイブ',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'セッションのブランチのプルリクエストがマージされたらアーカイブ',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': 'プロンプト時にアーカイブ済みセッションを復元',
   'settings.openchamber.sessionRetention.field.excludePinned': 'ピン留めしたセッションを保持',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': 'アーカイブ済みセッションを自動削除',

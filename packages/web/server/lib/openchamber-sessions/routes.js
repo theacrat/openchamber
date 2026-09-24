@@ -733,9 +733,42 @@ export const createOpenChamberSessionService = (dependencies) => {
       throw new OpenChamberControlError(parsed.error, 400);
     }
 
-    const { restored, failedIds } = await archiveStore.unarchive(parsed.ids);
-    for (const entry of restored) broadcastArchived(entry.id, null);
+    const restored = [];
+    const failedIds = [];
+    for (const id of parsed.ids) {
+      try {
+        // The watermark must land before the archive override is cleared. If
+        // either write fails, the session remains archived and a retry can
+        // safely repeat the whole transaction.
+        await writeMetadata(id, { openchamber: { sessionRetentionRestoredAt: Date.now() } }, asNonEmptyString(payload.directory) || '');
+        const result = await archiveStore.unarchive([id]);
+        if (result.restored.some((entry) => entry.id === id)) {
+          restored.push({ id, archivedAt: null });
+          broadcastArchived(id, null);
+        } else {
+          failedIds.push(id);
+        }
+      } catch (error) {
+        console.warn(`[OpenChamberSessions] failed to restore ${id}:`, error?.message ?? error);
+        failedIds.push(id);
+      }
+    }
     return { restored, failedIds };
+  };
+
+  const restoreSessionForDelivery = async (sessionID, directory = '') => {
+    const settings = await readSettingsFromDiskMigrated();
+    if (settings?.sessionAutoUnarchiveOnPrompt !== true) return;
+    const archived = await archiveStore.getAll();
+    if (archived === null) throw new OpenChamberControlError('Session archive state is unavailable', 503);
+    const archivedAt = Object.hasOwn(archived, sessionID)
+      ? archived[sessionID]
+      : (await clientFor(directory).session.get({ sessionID })).time?.archived;
+    if (!archivedAt) return;
+    const result = await unarchive({ ids: [sessionID], directory });
+    if (result.failedIds.length > 0) {
+      throw new OpenChamberControlError('Unable to restore archived session before prompt', 409);
+    }
   };
 
   const create = async (payload = {}) => {
@@ -896,6 +929,7 @@ export const createOpenChamberSessionService = (dependencies) => {
         sessionID: targetSessionID,
       });
 
+      await restoreSessionForDelivery(targetSessionID, directory);
       const dispatch = await dispatchPrompt({
         client,
         baseUrl,
@@ -972,6 +1006,7 @@ export const createOpenChamberSessionService = (dependencies) => {
     create,
     archive,
     unarchive,
+    restoreSessionForDelivery,
     archiveStore,
     sessionMetadataStore,
     setMetadata,

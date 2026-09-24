@@ -699,6 +699,71 @@ describe('settings helpers', () => {
   });
 
   describe('session retention settings persistence', () => {
+    it('round-trips the automatic policies through sanitization, persisted merge, and response formatting', () => {
+      const helpers = createTestHelpersWithRealSanitizers();
+      for (const enabled of [true, false]) {
+        const payload = {
+          sessionAutoArchiveOnMerge: enabled,
+          sessionAutoArchiveEnabled: enabled,
+          sessionAutoArchiveAfterDays: 14,
+          sessionAutoUnarchiveOnPrompt: enabled,
+          sessionRetentionExcludePinned: enabled,
+          sessionAutoDeleteArchivedEnabled: enabled,
+          sessionAutoDeleteArchivedAfterDays: 90,
+        };
+        const sanitized = helpers.sanitizeSettingsUpdate(payload);
+        expect(sanitized).toEqual(payload);
+        const persisted = helpers.mergePersistedSettings({ autoDeleteEnabled: false }, sanitized);
+        const response = helpers.formatSettingsResponse(JSON.parse(JSON.stringify(persisted)));
+        expect(response).toMatchObject({ ...payload, autoDeleteEnabled: false });
+      }
+    });
+
+    it('rejects malformed automatic policy values without enabling missing policies', () => {
+      const helpers = createTestHelpersWithRealSanitizers();
+      expect(helpers.sanitizeSettingsUpdate({
+        sessionAutoArchiveOnMerge: 'true',
+        sessionAutoArchiveEnabled: 1,
+        sessionAutoArchiveAfterDays: '30',
+        sessionAutoUnarchiveOnPrompt: null,
+        sessionRetentionExcludePinned: 'false',
+        sessionAutoDeleteArchivedEnabled: {},
+        sessionAutoDeleteArchivedAfterDays: null,
+      })).toEqual({});
+      expect(helpers.sanitizeSettingsUpdate({})).toEqual({});
+    });
+
+    it('accepts independent retention periods at both day limits and rejects non-finite periods', () => {
+      const helpers = createTestHelpersWithRealSanitizers();
+      expect(helpers.sanitizeSettingsUpdate({
+        sessionAutoArchiveAfterDays: 1,
+        sessionAutoDeleteArchivedAfterDays: 365,
+      })).toEqual({
+        sessionAutoArchiveAfterDays: 1,
+        sessionAutoDeleteArchivedAfterDays: 365,
+      });
+      for (const value of [NaN, Infinity, -Infinity]) {
+        expect(helpers.sanitizeSettingsUpdate({
+          sessionAutoArchiveAfterDays: value,
+          sessionAutoDeleteArchivedAfterDays: value,
+        })).toEqual({});
+      }
+      expect(helpers.sanitizeSettingsUpdate({
+        sessionAutoArchiveAfterDays: -10,
+        sessionAutoDeleteArchivedAfterDays: 400,
+      })).toEqual({
+        sessionAutoArchiveAfterDays: 1,
+        sessionAutoDeleteArchivedAfterDays: 365,
+      });
+      expect(helpers.sanitizeSettingsUpdate({
+        sessionAutoArchiveAfterDays: 14.4,
+        sessionAutoDeleteArchivedAfterDays: 89.6,
+      })).toEqual({
+        sessionAutoArchiveAfterDays: 14,
+        sessionAutoDeleteArchivedAfterDays: 90,
+      });
+    });
+
     it('round-trips archived-only retention and rejects non-boolean values', () => {
       const helpers = createTestHelpersWithRealSanitizers();
       for (const sessionRetentionOnlyArchived of [true, false]) {
@@ -766,6 +831,9 @@ describe('settings registry gate', () => {
     defaultGitIdentityId: 'global', permissionAutoAccept: { sessions: { s: true }, revision: 1 },
     agentControlToolEnabled: true, agentWebToolEnabled: true, browserProvider: 'builtin', agentMemoryToolEnabled: true, openCodeUpdateToastDismissedVersion: '1.0.0',
     autoDeleteEnabled: true, autoDeleteAfterDays: 30, sessionRetentionOnlyArchived: false, sessionRetentionAction: 'archive', terminalShell: 'zsh', terminalLoginShells: ['zsh'],
+    sessionAutoArchiveOnMerge: true, sessionAutoArchiveEnabled: true, sessionAutoArchiveAfterDays: 14,
+    sessionAutoUnarchiveOnPrompt: true, sessionRetentionExcludePinned: false,
+    sessionAutoDeleteArchivedEnabled: true, sessionAutoDeleteArchivedAfterDays: 90,
     openInAppId: 'vscode', dictationEnabled: true, sttProvider: 'local', sttServerUrl: 'http://localhost:8001/v1', sttModel: 'm', sttLocalModel: 'm', sttLanguage: 'en',
     tunnelProvider: 'cloudflare', tunnelMode: 'quick', tunnelBootstrapTtlMs: 600000, tunnelSessionTtlMs: 86400000, managedLocalTunnelConfigPath: '/tmp/x',
     managedRemoteTunnelHostname: 'x.example', managedRemoteTunnelToken: 'token', managedRemoteTunnelPresets: [{ id: 'a', name: 'A', hostname: 'a.example' }],

@@ -24,8 +24,7 @@ export const createServerUtilsRuntime = (dependencies) => {
     getLoginShellPath,
     getArchivedSessions = null,
     getStoredSessionMetadata = null,
-    readSettingsFromDiskMigrated = null,
-    unarchiveSession = null,
+    restoreSessionForDelivery = null,
   } = dependencies;
 
   const setOpenCodePort = (port) => {
@@ -223,8 +222,7 @@ export const createServerUtilsRuntime = (dependencies) => {
       getUiNotificationClients,
       getArchivedSessions,
       getStoredSessionMetadata,
-      readSettingsFromDiskMigrated,
-      unarchiveSession,
+      restoreSessionForDelivery,
     });
   };
 

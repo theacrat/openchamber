@@ -1000,7 +1000,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': 'Automatic checks run while OpenChamber is open.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Archive inactive sessions automatically',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Inactive session age',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Archive sessions when linked pull requests merge',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Archive sessions when their branch pull request is merged',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': 'Restore archived sessions when prompted',
   'settings.openchamber.sessionRetention.field.excludePinned': 'Keep pinned sessions',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': 'Delete archived sessions automatically',

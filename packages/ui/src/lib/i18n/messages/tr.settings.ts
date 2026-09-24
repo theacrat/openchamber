@@ -996,7 +996,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': 'Otomatik kontroller OpenChamber açıkken çalışır.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Etkin olmayan oturumları otomatik arşivle',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Etkin olmayan oturum yaşı',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Bağlantılı pull requestler birleştirildiğinde oturumları arşivle',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Oturumların dalına ait çekme isteği birleştirildiğinde oturumları arşivle',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': 'İstem geldiğinde arşivlenmiş oturumları geri yükle',
   'settings.openchamber.sessionRetention.field.excludePinned': 'Sabitlenmiş oturumları koru',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': 'Arşivlenmiş oturumları otomatik sil',

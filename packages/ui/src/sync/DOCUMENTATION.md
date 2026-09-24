@@ -305,13 +305,23 @@ explicit lifecycle edge; the store coalesces an overlapping in-flight load.
 automatic runs share a lock acquired before loading. Each run requests a fresh
 complete global snapshot and refuses the loader's error/fallback state. A
 runtime switch stops the batch and prevents writing its cooldown into the new
-runtime. Automatic attempts run every five minutes while the app is open;
-manual runs bypass the cooldown and enabled checkbox.
+runtime. Legacy cleanup has a daily cooldown; manual runs bypass that cooldown
+and its enabled checkbox. The newer automatic policies check on mount, when the
+app becomes visible, and every five minutes while visible.
 Automatic policies cover inactive archive, merged-PR archive, prompt restore,
 pin exclusion, and archived-session deletion. Each target is re-read and its
 current policy, age, activity, queue, blocking requests, and hierarchy are
-checked before mutation. Delivery paths persist restore timestamps so a restore
-wins over an older merge observation.
+checked before mutation. Merge archive follows the thread-list branch PR status,
+without requiring explicit PR links or forced redundant GitHub reads. Activity
+after a merge blocks archiving for that merge. Restore timestamps exclude an
+older PR1 merge but allow a later PR2 merge on the same branch if no subsequent
+session activity blocks it. The design and runtime requirements are in
+`docs/session-retention-design.md`.
+
+Rechecks and restore watermarks reject observed stale candidates, but the read
+and archive/delete requests are separate operations. A concurrent prompt or
+another client's mutation can still race the final request. The shared lock
+serializes retention runs within one client, not across clients or delivery owners.
 
 Retention targets unarchived sessions by last activity by default. The opt-in
 `sessionRetentionOnlyArchived` setting switches both the preview and execution
@@ -321,13 +331,15 @@ Turning it off leaves Delete selected and makes Archive available again. The
 setting uses the instance settings registry across web, desktop, VS Code and mobile.
 
 Both modes preserve the five most recent sessions in the selected scope, ranked
-by that scope's retention timestamp, plus the selected session, shared sessions,
-and sessions with observed live activity. Parents with an attached `/btw` conversation also stay,
+by that scope's retention timestamp, plus the selected session
+and sessions with observed live activity. OpenCode 2.x has no authoritative
+shared/public-session field, so retention cannot promise shared-session protection.
+Parents with an attached `/btw` conversation also stay,
 because the canonical archive/delete actions remove that temporary fork.
 Sessions outside the selected scope remain protected. Because
 OpenCode cascades deletion, every ancestor of a retained session is protected
 too. Eligible deletions run children first and recheck current selection,
-activity, sharing, age, and child membership before each request. A failed child
+activity, age, and child membership before each request. A failed child
 blocks deletion of its ancestors while unrelated sessions continue.
 
 Cleanup uses the canonical archive/delete actions, including confirmed `404`

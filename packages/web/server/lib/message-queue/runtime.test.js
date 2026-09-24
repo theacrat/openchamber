@@ -3,6 +3,9 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMessageQueueRuntime, parseQueuedItemInput } from './runtime.js';
+import { createOpenChamberSessionService } from '../openchamber-sessions/routes.js';
+import { createArchiveStore } from '../openchamber-sessions/archive-store.js';
+import { createSessionMetadataStore } from '../openchamber-sessions/session-metadata-store.js';
 
 const SESSION = 'ses_queue_test_1';
 const DIRECTORY = '/repo';
@@ -75,7 +78,7 @@ const createOpenCode = () => {
   return { state, fetchImpl };
 };
 
-const createRuntime = ({ dataDir = makeDataDir(), openCode = createOpenCode(), knowledge = null, retryDelayMs, resolveAutoSelection, now } = {}) => {
+const createRuntime = ({ dataDir = makeDataDir(), openCode = createOpenCode(), knowledge = null, retryDelayMs, resolveAutoSelection, now, restoreSessionForDelivery } = {}) => {
   let eventHandler = () => {};
   let statusHandler = () => {};
   const broadcasts = [];
@@ -94,6 +97,7 @@ const createRuntime = ({ dataDir = makeDataDir(), openCode = createOpenCode(), k
     fetchImpl: openCode.fetchImpl,
     dispatchQuietMs: 0,
     abortHoldMs: 50,
+    restoreSessionForDelivery,
   };
   if (retryDelayMs) options.retryDelayMs = retryDelayMs;
   if (resolveAutoSelection) options.resolveAutoSelection = resolveAutoSelection;
@@ -116,6 +120,88 @@ const settle = async (ms = 30) => {
 };
 
 describe('auto routing', () => {
+  it.each([[true, 'follow up'], [false, 'follow up'], [true, '/review src'], [false, '/review src']])('delivers with real restore stores when restore-on-prompt is %s for %s', async (enabled, text) => {
+    const dataDir = makeDataDir();
+    const archiveStore = createArchiveStore({ dataDir });
+    let metadata = { keep: 'upstream' };
+    let failMetadata = enabled;
+    const sessionMetadataStore = createSessionMetadataStore({ dataDir, openCode: {
+      read: async () => metadata,
+      write: async (_id, value) => {
+        if (failMetadata) throw new Error('metadata write failed');
+        metadata = value;
+      },
+    } });
+    const service = createOpenChamberSessionService({
+      archiveStore, sessionMetadataStore,
+      readSettingsFromDiskMigrated: async () => ({ sessionAutoUnarchiveOnPrompt: enabled }),
+      buildOpenCodeUrl: () => 'http://opencode.test',
+      getOpenCodeAuthHeaders: () => ({}),
+      createOpenCodeClient: () => ({ session: { get: async () => ({ time: { archived: 100 } }) } }),
+    });
+    const { runtime, openCode, emit } = createRuntime({ dataDir, restoreSessionForDelivery: service.restoreSessionForDelivery, retryDelayMs: () => 20 });
+    openCode.state.commands = [{ name: 'review' }];
+    const fetchImpl = openCode.fetchImpl.getMockImplementation();
+    openCode.fetchImpl.mockImplementation(async (url, init) => {
+      if (init?.method === 'POST' && enabled) {
+        expect(await archiveStore.getAll()).toEqual({ [SESSION]: null });
+        expect(metadata.openchamber.sessionRetentionRestoredAt).toBeGreaterThan(100);
+      }
+      return fetchImpl(url, init);
+    });
+    runtime.start();
+    try {
+      await runtime.enqueue(SESSION, DIRECTORY, item({ text, content: text }));
+      await settle();
+      if (enabled) {
+        expect(openCode.state.sent).toEqual([]);
+        expect(await archiveStore.getAll()).toEqual({});
+        failMetadata = false;
+        emit({ type: 'session.status', properties: { sessionID: SESSION, status: { type: 'idle' } } });
+        await settle(100);
+      } else {
+        expect(await archiveStore.getAll()).toEqual({});
+        expect(metadata).toEqual({ keep: 'upstream' });
+      }
+      expect(openCode.state.sent).toHaveLength(1);
+      expect(openCode.state.sent[0].path).toBe(`/api/session/${SESSION}/${text.startsWith('/') ? 'command' : 'prompt'}`);
+      expect(metadata.keep).toBe('upstream');
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it('waits for restoration before any delivery and keeps a failed item for retry', async () => {
+    let fail = true;
+    let restored = false;
+    const restoreSessionForDelivery = async (id, directory) => {
+      expect(id).toBe(SESSION);
+      expect(directory).toBe(DIRECTORY);
+      if (fail) throw new Error('restore unavailable');
+      restored = true;
+    };
+    const { runtime, openCode, emit } = createRuntime({ restoreSessionForDelivery, retryDelayMs: () => 20 });
+    const fetchImpl = openCode.fetchImpl.getMockImplementation();
+    openCode.fetchImpl.mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') expect(restored).toBe(true);
+      return fetchImpl(url, init);
+    });
+    runtime.start();
+    try {
+      await runtime.enqueue(SESSION, DIRECTORY, item());
+      await settle();
+      expect(openCode.state.sent).toEqual([]);
+      expect(openCode.state.switched).toEqual([]);
+      fail = false;
+      emit({ type: 'session.status', properties: { sessionID: SESSION, status: { type: 'idle' } } });
+      await settle(100);
+      expect(openCode.state.sent).toHaveLength(1);
+      expect(openCode.state.sent[0].body.text).toBe('follow up');
+    } finally {
+      runtime.stop();
+    }
+  });
+
   it('switches a queued prompt and a queued command onto the routed model and agent', async () => {
     const resolveAutoSelection = vi.fn(async ({ model }) => (model?.id === 'auto'
       ? { model: { providerID: 'openai', id: 'gpt-6-astra' }, agent: 'plan', decision: {} }

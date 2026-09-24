@@ -62,6 +62,7 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     page: 'appearance',
     titleKey: 'settings.openchamber.visual.field.lightTheme',
     keywords: ['theme', 'color', 'light mode'],
+    isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
     id: 'appearance.dark-theme',
@@ -478,7 +479,6 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     page: 'sessions',
     titleKey: 'settings.openchamber.sessionRetention.field.autoArchiveOnMerge',
     keywords: ['retention', 'archive', 'merge', 'pull request'],
-    isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
     id: 'sessions.auto-unarchive-on-prompt',

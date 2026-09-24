@@ -14,8 +14,8 @@
  * that was written a moment earlier.
  *
  * Before 2.0.15 the state lived in `sessions-metadata.json` under the data dir.
- * Entries still in that file are the newest metadata their sessions have: they
- * are served from the file and pushed to OpenCode, lazily on the session's
+ * Entries still in that file overlay the fields they carry while preserving
+ * unrelated OpenCode metadata. They are pushed lazily on the session's
  * first write and in one sweep once OpenCode is up. A pushed entry leaves the
  * file; an empty file is renamed to `sessions-metadata.json.migrated` and kept
  * so nothing is lost if a migration turns out wrong.
@@ -190,15 +190,18 @@ export const createSessionMetadataStore = ({
 
   /**
    * Drops a pushed entry from the legacy file. OpenCode already holds the
-   * record, so a failed rewrite does not fail the write that caused it. The
-   * entry then stays on disk and the next start pushes that older copy again;
-   * the next rewrite of the file (any other migrated session) clears it first.
+   * record. A failed rewrite rejects the operation and retains the entry for
+   * retry, so callers cannot clear archive state before migration is durable.
    */
   const forgetLegacy = async (id) => {
+    const metadata = unmigrated.get(id);
     unmigrated.delete(id);
-    await persistLegacy().catch((error) => {
-      console.warn('[openchamber-sessions] could not update the legacy session metadata file:', error?.message ?? error);
-    });
+    try {
+      await persistLegacy();
+    } catch (error) {
+      unmigrated.set(id, metadata);
+      throw error;
+    }
   };
 
   /**
@@ -227,9 +230,20 @@ export const createSessionMetadataStore = ({
 
     return runForSession(id, async () => {
       const fromLegacy = unmigrated.has(id);
-      const current = fromLegacy ? unmigrated.get(id) : await openCode.read(id, { directory });
-      if (current === null) throw new Error(`session ${id} was not found`);
+      const upstream = await openCode.read(id, { directory });
+      if (upstream === null) throw new Error(`session ${id} was not found`);
+      const legacy = unmigrated.get(id);
+      const current = fromLegacy ? mergeMetadataPatch(upstream, legacy) : upstream;
       const merged = mergeMetadataPatch(current, patch);
+      if (fromLegacy) {
+        unmigrated.set(id, merged);
+        try {
+          await persistLegacy();
+        } catch (error) {
+          unmigrated.set(id, legacy);
+          throw error;
+        }
+      }
       await openCode.write(id, merged, { directory });
       if (fromLegacy) await forgetLegacy(id);
       return merged;
@@ -251,7 +265,10 @@ export const createSessionMetadataStore = ({
       // A write that ran first already migrated it.
       if (!unmigrated.has(id)) return;
       try {
-        await openCode.write(id, unmigrated.get(id));
+        const upstream = await openCode.read(id);
+        if (upstream !== null) {
+          await openCode.write(id, mergeMetadataPatch(upstream, unmigrated.get(id)));
+        }
       } catch (error) {
         if (!isSessionNotFound(error)) {
           console.warn(`[openchamber-sessions] could not migrate metadata for ${id}:`, error?.message ?? error);

@@ -968,7 +968,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.foregroundBoundary': 'As verificações automáticas são executadas enquanto o OpenChamber está aberto.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Arquivar sessões inativas automaticamente',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Tempo de inatividade da sessão',
-  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Arquivar sessões quando pull requests vinculados forem mesclados',
+  'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Arquivar sessões quando o pull request de sua branch for mesclado',
   'settings.openchamber.sessionRetention.field.autoUnarchiveOnPrompt': 'Restaurar sessões arquivadas ao receber um prompt',
   'settings.openchamber.sessionRetention.field.excludePinned': 'Manter sessões fixadas',
   'settings.openchamber.sessionRetention.field.autoDeleteArchived': 'Excluir sessões arquivadas automaticamente',

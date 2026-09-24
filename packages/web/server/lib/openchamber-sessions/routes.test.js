@@ -4,6 +4,7 @@ import path from 'node:path';
 import express from 'express';
 import request from 'supertest';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createArchiveStore } from './archive-store.js';
 
 const createWorktreeMock = vi.fn(async () => ({
   head: 'abc123',
@@ -77,6 +78,7 @@ globalThis.__openchamberCreateWorktreeMock = createWorktreeMock;
 globalThis.__openchamberGetWorktreeBootstrapStatusMock = getWorktreeBootstrapStatusMock;
 
 let registerOpenChamberSessionRoutes;
+let createOpenChamberSessionService;
 let createSessionMetadataStore;
 let createOpenCodeSessionMetadata;
 
@@ -207,7 +209,7 @@ const createApp = (overrides = {}, options = {}) => {
 
 describe('openchamber session routes', () => {
   beforeAll(async () => {
-    ({ registerOpenChamberSessionRoutes } = await import('./routes.js'));
+    ({ registerOpenChamberSessionRoutes, createOpenChamberSessionService } = await import('./routes.js'));
     ({ createSessionMetadataStore, createOpenCodeSessionMetadata } = await import('./session-metadata-store.js'));
   });
 
@@ -248,6 +250,146 @@ describe('openchamber session routes', () => {
     agentListMock.mockImplementation(async () => ({ data: [] }));
     configGetMock.mockReset();
     useCatalog();
+  });
+
+  describe('delivery restoration', () => {
+    const makeService = (overrides = {}) => createOpenChamberSessionService({
+      archiveStore: createMemoryArchiveStore(),
+      sessionMetadataStore: createMemorySessionMetadataStore(),
+      readSettingsFromDiskMigrated: async () => ({ sessionAutoUnarchiveOnPrompt: true }),
+      buildOpenCodeUrl: (route) => `http://opencode.test${route}`,
+      getOpenCodeAuthHeaders: () => ({}),
+      ...overrides,
+    });
+
+    it('blocks service-owned sends before dispatch on restore failure and succeeds on retry', async () => {
+      const archiveStore = createMemoryArchiveStore();
+      archiveStore.entries.set('ses_a', 100);
+      let fail = true;
+      const { app } = createApp({
+        archiveStore,
+        readSettingsFromDiskMigrated: async () => ({ sessionAutoUnarchiveOnPrompt: true }),
+        persistSessionMetadata: async () => {
+          if (fail) throw new Error('metadata unavailable');
+          return { openchamber: { sessionRetentionRestoredAt: 500 } };
+        },
+      });
+      const payload = { directory: '/repo/app', prompt: 'continue', model: 'openai/gpt-5.5', agent: 'build' };
+      await request(app).post('/api/openchamber/sessions/ses_a/send').send(payload).expect(409);
+      expect(sessionPromptMock).not.toHaveBeenCalled();
+      expect(sessionSwitchModelMock).not.toHaveBeenCalled();
+      expect(archiveStore.entries.get('ses_a')).toBe(100);
+      fail = false;
+      await request(app).post('/api/openchamber/sessions/ses_a/send').send(payload).expect(200);
+      expect(sessionPromptMock).toHaveBeenCalledTimes(1);
+      expect(archiveStore.entries.has('ses_a')).toBe(false);
+    });
+
+    it('rejects upstream session lookup failures instead of treating them as active', async () => {
+      const service = makeService();
+      sessionGetMock.mockRejectedValue(new Error('session lookup unavailable'));
+      await expect(service.restoreSessionForDelivery('ses_a')).rejects.toThrow('session lookup unavailable');
+      sessionGetMock.mockResolvedValue(null);
+      await expect(service.restoreSessionForDelivery('ses_a')).rejects.toThrow();
+      expect(await service.archiveStore.getAll()).toEqual({});
+    });
+
+    it('preserves a real archived session through legacy metadata write failure and retry', async () => {
+      const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restore-service-'));
+      try {
+        fs.writeFileSync(path.join(dataDir, 'sessions-metadata.json'), JSON.stringify({ ses_a: { openchamber: { note: 'legacy' } } }));
+        const archiveStore = createArchiveStore({ dataDir });
+        await archiveStore.archive(['ses_a'], 100);
+        let metadata = { unrelated: 'upstream' };
+        let fail = true;
+        const sessionMetadataStore = createSessionMetadataStore({ dataDir, openCode: {
+          read: async () => metadata,
+          write: async (_id, value) => {
+            if (fail) throw new Error('upstream metadata failed');
+            metadata = value;
+          },
+        } });
+        const service = makeService({ archiveStore, sessionMetadataStore });
+        await expect(service.restoreSessionForDelivery('ses_a')).rejects.toThrow('Unable to restore');
+        expect(await archiveStore.getAll()).toEqual({ ses_a: 100 });
+        fail = false;
+        await service.restoreSessionForDelivery('ses_a');
+        expect(await archiveStore.getAll()).toEqual({ ses_a: null });
+        expect(metadata).toMatchObject({ unrelated: 'upstream', openchamber: { note: 'legacy' } });
+        expect(metadata.openchamber.sessionRetentionRestoredAt).toBeGreaterThan(100);
+        expect(await sessionMetadataStore.listUnmigrated()).toEqual({});
+      } finally {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+      }
+    });
+
+    it('restores an upstream archive and writes its watermark before clearing', async () => {
+      sessionGetMock.mockResolvedValue({ id: 'ses_a', time: { archived: 100 } });
+      const archiveStore = createMemoryArchiveStore();
+      const metadata = createMemorySessionMetadataStore();
+      const service = makeService({ archiveStore, sessionMetadataStore: metadata });
+      const clear = archiveStore.unarchive;
+      archiveStore.unarchive = async (ids) => {
+        expect(metadata.entries.get('ses_a').openchamber.sessionRetentionRestoredAt).toBeGreaterThan(100);
+        return clear(ids);
+      };
+      await service.restoreSessionForDelivery('ses_a', '/repo');
+      expect(sessionGetMock).toHaveBeenCalledTimes(1);
+      expect(metadata.entries.get('ses_a').openchamber.sessionRetentionRestoredAt).toBeGreaterThan(100);
+    });
+
+    it('keeps archive state and the persisted watermark when archive clearing fails', async () => {
+      const archiveStore = createMemoryArchiveStore();
+      archiveStore.entries.set('ses_a', 100);
+      archiveStore.failIds(['ses_a']);
+      const service = makeService({ archiveStore });
+      await expect(service.restoreSessionForDelivery('ses_a')).rejects.toThrow('Unable to restore');
+      expect(archiveStore.entries.get('ses_a')).toBe(100);
+      const metadata = await service.sessionMetadataStore.get('ses_a');
+      expect(metadata.openchamber.sessionRetentionRestoredAt).toBeGreaterThan(100);
+      archiveStore.failIds([]);
+      await service.restoreSessionForDelivery('ses_a');
+      expect(archiveStore.entries.has('ses_a')).toBe(false);
+    });
+
+    it('honors explicit null without reading upstream or writing a watermark', async () => {
+      const archiveStore = createMemoryArchiveStore();
+      archiveStore.entries.set('ses_a', null);
+      const metadata = createMemorySessionMetadataStore();
+      await makeService({ archiveStore, sessionMetadataStore: metadata }).restoreSessionForDelivery('ses_a');
+      expect(sessionGetMock).not.toHaveBeenCalled();
+      expect(metadata.entries.size).toBe(0);
+    });
+
+    it('fails closed on archive read and metadata write failures and retries safely', async () => {
+      const archiveStore = createMemoryArchiveStore();
+      archiveStore.entries.set('ses_a', 100);
+      const metadata = createMemorySessionMetadataStore();
+      const service = makeService({ archiveStore, sessionMetadataStore: metadata });
+      const getAll = archiveStore.getAll;
+      archiveStore.getAll = async () => null;
+      await expect(service.restoreSessionForDelivery('ses_a')).rejects.toThrow('archive state is unavailable');
+      expect(metadata.entries.size).toBe(0);
+      archiveStore.getAll = getAll;
+      const write = metadata.setSessionMetadata;
+      metadata.setSessionMetadata = async () => { throw new Error('metadata unavailable'); };
+      await expect(service.restoreSessionForDelivery('ses_a')).rejects.toThrow('Unable to restore');
+      expect(archiveStore.entries.get('ses_a')).toBe(100);
+      metadata.setSessionMetadata = write;
+      await service.restoreSessionForDelivery('ses_a');
+      expect(archiveStore.entries.has('ses_a')).toBe(false);
+      expect(metadata.entries.get('ses_a').openchamber.sessionRetentionRestoredAt).toBeGreaterThan(100);
+    });
+
+    it('does no archive or upstream work when disabled and propagates settings read failures', async () => {
+      const archiveStore = createMemoryArchiveStore();
+      archiveStore.getAll = async () => { throw new Error('must not read'); };
+      await makeService({ archiveStore, readSettingsFromDiskMigrated: async () => ({ sessionAutoUnarchiveOnPrompt: false }) })
+        .restoreSessionForDelivery('ses_a');
+      expect(sessionGetMock).not.toHaveBeenCalled();
+      await expect(makeService({ readSettingsFromDiskMigrated: async () => { throw new Error('settings unavailable'); } })
+        .restoreSessionForDelivery('ses_a')).rejects.toThrow('settings unavailable');
+    });
   });
 
   describe('archiving a batch of sessions', () => {

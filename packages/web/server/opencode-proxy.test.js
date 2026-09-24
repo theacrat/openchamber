@@ -37,6 +37,47 @@ describe('OpenCode proxy SSE forwarding', () => {
     upstreamServer = undefined;
   });
 
+  it.each(['message', 'prompt_async', 'prompt', 'command'])('blocks %s forwarding on restore failure and preserves the request on retry', async (route) => {
+    const received = [];
+    const upstream = express();
+    upstream.use(express.json());
+    upstream.post(`/api/session/:id/${route}`, (req, res) => {
+      received.push(req.body);
+      res.json({ accepted: true });
+    });
+    upstreamServer = await listen(upstream);
+    const port = upstreamServer.address().port;
+    let fail = true;
+    const app = express();
+    registerOpenCodeProxy(app, {
+      fs: {}, os: {}, path, OPEN_CODE_READY_GRACE_MS: 0,
+      getRuntime: () => ({ openCodePort: port, isOpenCodeReady: true, openCodeNotReadySince: 0, isRestartingOpenCode: false }),
+      getOpenCodeAuthHeaders: () => ({}),
+      buildOpenCodeUrl: (requestPath) => `http://127.0.0.1:${port}${requestPath}`,
+      ensureOpenCodeApiPrefix: () => {},
+      restoreSessionForDelivery: async (sessionID, directory) => {
+        expect(sessionID).toBe('ses_restore');
+        expect(directory).toBe('/repo/café');
+        expect(received).toEqual([]);
+        if (fail) throw new Error('restore persistence failed');
+      },
+    });
+    app.use((error, _req, res, _next) => res.status(503).json({ error: error.message }));
+    proxyServer = await listen(app);
+    const url = `http://127.0.0.1:${proxyServer.address().port}/api/session/ses_restore/${route}`;
+    const body = { text: 'keep this prompt', name: 'review' };
+    const send = () => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-opencode-directory': encodeURIComponent('/repo/café'), 'x-opencode-directory-encoding': 'uri' }, body: JSON.stringify(body) });
+    const blocked = await send();
+    expect(blocked.status).toBe(503);
+    expect(await blocked.json()).toEqual({ error: 'restore persistence failed' });
+    expect(received).toEqual([]);
+    fail = false;
+    const accepted = await send();
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toEqual({ accepted: true });
+    expect(received).toEqual([body]);
+  });
+
   it('forwards event streams with nginx-safe headers', async () => {
     let seenAuthorization = null;
 

@@ -75,10 +75,7 @@ const restoreDeliveryTarget = async (method: string, requestPath: string, deps: 
   const match = /^\/api\/session\/([^/]+)\/(?:prompt|command)(?:\?.*)?$/.exec(requestPath);
   if (method !== 'POST' || !match || !deps.restoreArchivedSession || !deps.shouldRestoreArchivedSession
     || !await deps.shouldRestoreArchivedSession()) return true;
-  const archived = await deps.sessionState?.readArchived();
-  if (!archived) throw new Error('Session archive state is unavailable');
   const sessionId = decodeURIComponent(match[1]);
-  if (!archived[sessionId]) return true;
   return deps.restoreArchivedSession(sessionId);
 };
 

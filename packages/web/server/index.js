@@ -983,14 +983,8 @@ notificationTriggerRuntime.setGetIsSessionAutoAccepting(
   (sessionId, directory) => permissionAutoAcceptRuntime.isSessionAutoAccepting(sessionId, directory),
 );
 
-const restoreSessionForDelivery = async (sessionId) => {
-  const result = await openChamberSessionService.unarchive({ ids: [sessionId] });
-  if (result.restored?.some((session) => session.id === sessionId) !== true) return false;
-  await sessionMetadataStore.setSessionMetadata(sessionId, {
-    openchamber: { sessionRetentionRestoredAt: Date.now() },
-  }, { directory: '' });
-  return true;
-};
+const restoreSessionForDelivery = (sessionId, directory) =>
+  openChamberSessionService.restoreSessionForDelivery(sessionId, directory);
 
 // Queued follow-up messages are delivered by the server so a closed tab or a
 // dropped connection no longer strands them (VS Code keeps its UI-side queue).
@@ -1003,13 +997,10 @@ const messageQueueRuntime = createMessageQueueRuntime({
   // shared control stream for SSE clients and the existing WS fan-out.
   broadcastGlobalUiEvent: broadcastOpenChamberUiEvent,
   resolveAutoSelection: (send) => routingRuntime.resolveAutoSelection(send),
-  isSessionArchived: (sessionId) => openChamberSessionService.archiveStore.isArchived(sessionId),
-  unarchiveSession: restoreSessionForDelivery,
-  readSettingsFromDiskMigrated,
+  restoreSessionForDelivery,
   onPromptSent: (sessionId) => sessionRuntime.markUserMessageSent(sessionId),
   dataDir: OPENCHAMBER_DATA_DIR,
 });
-
 messageQueueRuntime.start();
 
 const openCodeWatcherRuntime = createOpenCodeWatcherRuntime({
@@ -1118,8 +1109,7 @@ const serverUtilsRuntime = createServerUtilsRuntime({
   // down, while the proxy is registered later still.
   getArchivedSessions: () => openChamberSessionService.archiveStore.getAll(),
   getStoredSessionMetadata: () => sessionMetadataStore.listUnmigrated(),
-  readSettingsFromDiskMigrated,
-  unarchiveSession: restoreSessionForDelivery,
+  restoreSessionForDelivery,
   fs,
   os,
   path,
