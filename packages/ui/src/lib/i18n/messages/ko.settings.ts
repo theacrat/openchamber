@@ -965,6 +965,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.removeFailed': 'Passkey를 제거할 수 없습니다.',
   'settings.openchamber.passkeys.toast.clearAuthFailed': '저장된 인증을 지울 수 없습니다.',
   'settings.openchamber.sessionRetention.title': '세션 보존',
+  'settings.openchamber.sessionRetention.foregroundBoundary': '자동 검사는 OpenChamber가 열려 있는 동안 실행됩니다.',
   'settings.openchamber.sessionRetention.field.autoArchive': '비활성 세션 자동 보관',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': '비활성 세션 기간',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': '연결된 풀 리퀘스트가 병합되면 세션 보관',

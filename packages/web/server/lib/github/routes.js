@@ -1919,7 +1919,7 @@ export function registerGitHubRoutes(app) {
       const octokit = getOctokitOrNull();
       if (!octokit) return res.json({ connected: false });
       const repo = await resolveRepoForRequest(octokit, directory, getRequestedRepo(req));
-      if (!repo) return res.json({ connected: true, number, url: '', state: 'closed', mergedAt: null });
+      if (!repo) return res.status(503).json({ error: 'GitHub repository could not be resolved' });
       const response = await octokit.rest.pulls.get({ owner: repo.owner, repo: repo.repo, pull_number: number });
       const pr = response?.data;
       if (!pr) return res.status(404).json({ error: 'PR not found' });

@@ -965,6 +965,7 @@ export const settingsDict = {
   "settings.openchamber.passkeys.toast.removeFailed": "Не вдалося видалити ключ доступу.",
   "settings.openchamber.passkeys.toast.clearAuthFailed": "Не вдалося очистити збережену автентифікацію.",
   "settings.openchamber.sessionRetention.title": "Зберігання сесій",
+  'settings.openchamber.sessionRetention.foregroundBoundary': 'Автоматичні перевірки виконуються, поки OpenChamber відкритий.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Автоматично архівувати неактивні сеанси',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Вік неактивного сеансу',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Архівувати сеанси після злиття пов’язаних pull request',

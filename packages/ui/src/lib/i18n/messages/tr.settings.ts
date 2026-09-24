@@ -993,6 +993,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.removeFailed': 'Passkey kaldırılamadı.',
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Kaydedilmiş kimlik doğrulama bilgileri temizlenemedi.',
   'settings.openchamber.sessionRetention.title': 'Session Saklama',
+  'settings.openchamber.sessionRetention.foregroundBoundary': 'Otomatik kontroller OpenChamber açıkken çalışır.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Etkin olmayan oturumları otomatik arşivle',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Etkin olmayan oturum yaşı',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Bağlantılı pull requestler birleştirildiğinde oturumları arşivle',

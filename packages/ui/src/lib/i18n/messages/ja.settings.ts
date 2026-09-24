@@ -998,6 +998,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.removeFailed': 'パスキーを削除できませんでした。',
   'settings.openchamber.passkeys.toast.clearAuthFailed': '保存された認証情報をクリアできませんでした。',
   'settings.openchamber.sessionRetention.title': 'Session 保持',
+  'settings.openchamber.sessionRetention.foregroundBoundary': '自動チェックは OpenChamber が開いている間に実行されます。',
   'settings.openchamber.sessionRetention.field.autoArchive': '非アクティブなセッションを自動アーカイブ',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': '非アクティブなセッションの経過日数',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'リンクしたプルリクエストのマージ時にアーカイブ',

@@ -883,6 +883,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.removeFailed': 'Impossible de supprimer le mot de passe.',
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Impossible d\'effacer l\'authentification enregistrée.',
   'settings.openchamber.sessionRetention.title': 'Rétention de session',
+  'settings.openchamber.sessionRetention.foregroundBoundary': 'Les vérifications automatiques s’exécutent quand OpenChamber est ouvert.',
   'settings.openchamber.sessionRetention.field.autoArchive': 'Archiver automatiquement les sessions inactives',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': 'Âge des sessions inactives',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': 'Archiver les sessions lorsque les pull requests liées sont fusionnées',

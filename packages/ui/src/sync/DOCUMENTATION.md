@@ -305,7 +305,7 @@ explicit lifecycle edge; the store coalesces an overlapping in-flight load.
 automatic runs share a lock acquired before loading. Each run requests a fresh
 complete global snapshot and refuses the loader's error/fallback state. A
 runtime switch stops the batch and prevents writing its cooldown into the new
-runtime. Automatic attempts are limited to once per day while the app is open;
+runtime. Automatic attempts run every five minutes while the app is open;
 manual runs bypass the cooldown and enabled checkbox.
 
 Retention targets unarchived sessions by last activity by default. The opt-in

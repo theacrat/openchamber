@@ -962,6 +962,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.removeFailed': '無法移除 passkey。',
   'settings.openchamber.passkeys.toast.clearAuthFailed': '無法清除已儲存的驗證資訊。',
   'settings.openchamber.sessionRetention.title': '工作階段保留',
+  'settings.openchamber.sessionRetention.foregroundBoundary': 'OpenChamber 開啟時才會執行自動檢查。',
   'settings.openchamber.sessionRetention.field.autoArchive': '自動封存非活躍工作階段',
   'settings.openchamber.sessionRetention.field.autoArchivePeriod': '非活躍工作階段期限',
   'settings.openchamber.sessionRetention.field.autoArchiveOnMerge': '連結的提取要求合併後封存工作階段',

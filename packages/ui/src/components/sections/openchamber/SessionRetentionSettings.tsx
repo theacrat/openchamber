@@ -86,6 +86,7 @@ export const SessionRetentionSettings: React.FC = () => {
   return (
     <SettingsSection
       title={t('settings.openchamber.sessionRetention.title')}
+      description={t('settings.openchamber.sessionRetention.foregroundBoundary')}
       info={t(onlyArchived
         ? 'settings.openchamber.sessionRetention.archivedTooltip'
         : 'settings.openchamber.sessionRetention.tooltip')}
